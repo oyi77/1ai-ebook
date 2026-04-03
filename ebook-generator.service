@@ -1,5 +1,5 @@
 [Unit]
-Description=Ebook Generator - Streamlit App
+Description=Ebook Generator (Streamlit :8501 + API :8765)
 After=network.target
 
 [Service]
@@ -9,7 +9,8 @@ Group=openclaw
 WorkingDirectory=/home/openclaw/projects/1ai-ebook
 Environment=PATH=/home/openclaw/.local/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/bin:/usr/bin:/bin
 Environment=OMNIROUTE_BASE_URL=http://localhost:20128/v1
-ExecStart=/home/linuxbrew/.linuxbrew/bin/streamlit run app/main.py --server.port=8501 --server.address=127.0.0.1 --server.headless=true
+Environment=EBOOK_API_KEY=dev-key-change-me
+ExecStart=/home/linuxbrew/.linuxbrew/bin/python3 run.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
