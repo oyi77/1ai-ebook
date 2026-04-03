@@ -4,6 +4,7 @@ from pathlib import Path
 
 from src.db.repository import ProjectRepository
 from src.export.docx_generator import DocxGenerator
+from src.export.epub_generator import EpubGenerator
 from src.export.pdf_converter import PdfConverter
 
 
@@ -24,6 +25,7 @@ class ExportOrchestrator:
 
         self._generate_docx(project_id, project_dir)
         self._generate_pdf(project_dir)
+        self._generate_epub(project_id, project_dir)
 
         self._create_manifest(project_id, exports_dir)
 
@@ -35,6 +37,7 @@ class ExportOrchestrator:
             "exports": {
                 "docx": exports_dir / "ebook.docx",
                 "pdf": exports_dir / "ebook.pdf",
+                "epub": exports_dir / "ebook.epub",
             },
         }
 
@@ -50,6 +53,20 @@ class ExportOrchestrator:
 
         result = generator.generate(project_id, title=title)
         return result
+
+    def _generate_epub(self, project_id: int, project_dir: Path) -> None:
+        try:
+            title = "Ebook"
+            outline_file = project_dir / "outline.json"
+            if outline_file.exists():
+                with open(outline_file) as f:
+                    outline = json.load(f)
+                    title = outline.get("best_title", "Ebook")
+
+            generator = EpubGenerator(projects_dir=project_dir.parent)
+            generator.generate(project_id, title=title)
+        except Exception:
+            pass
 
     def _generate_pdf(self, project_dir: Path) -> None:
         converter = PdfConverter()
@@ -73,7 +90,7 @@ class ExportOrchestrator:
             "files": {},
         }
 
-        for ext in ["docx", "pdf"]:
+        for ext in ["docx", "pdf", "epub"]:
             file_path = exports_dir / f"ebook.{ext}"
             if file_path.exists():
                 manifest["files"][ext] = {

@@ -16,6 +16,7 @@ st.markdown("Fill in your ebook details and let AI do the writing")
 from src.pipeline.intake import ProjectIntake
 from src.pipeline.orchestrator import PipelineOrchestrator
 from src.db.schema import create_tables
+from src.i18n.languages import SUPPORTED_LANGUAGES, is_rtl
 
 db_path = Path("data/ebook_generator.db")
 db_path.parent.mkdir(exist_ok=True)
@@ -95,25 +96,39 @@ with st.form("ebook_form"):
             help="How many chapters should your ebook have?",
         )
 
+        def _lang_label(code):
+            meta = SUPPORTED_LANGUAGES[code]
+            rtl_tag = " (RTL)" if meta["rtl"] else ""
+            return f"{meta['name']}{rtl_tag}"
+
         target_language = st.selectbox(
             "Target Language",
-            options=["en", "es", "fr", "de", "pt", "it", "zh"],
-            format_func=lambda x: {
-                "en": "English",
-                "es": "Spanish",
-                "fr": "French",
-                "de": "German",
-                "pt": "Portuguese",
-                "it": "Italian",
-                "zh": "Chinese",
-            }[x],
+            options=list(SUPPORTED_LANGUAGES.keys()),
+            index=list(SUPPORTED_LANGUAGES.keys()).index("en"),
+            format_func=_lang_label,
         )
+
+        extra_languages = st.multiselect(
+            "Also generate in (optional):",
+            options=[k for k in SUPPORTED_LANGUAGES.keys() if k != target_language],
+            format_func=_lang_label,
+            max_selections=3,
+            help="Generate additional language editions. Increases generation time.",
+        )
+        target_languages = [target_language] + extra_languages
 
         ai_model = st.selectbox(
             "AI Model",
             options=available_models,
             help="Choose the AI model for content generation (fetched from OmniRoute)",
         )
+
+    quality_level = st.radio(
+        "Quality Level",
+        ["fast", "thorough"],
+        horizontal=True,
+        help="Fast: immediate output. Thorough: AI grammar review + consistency scoring (slower, uses more API credits).",
+    )
 
     submitted = st.form_submit_button(
         "🚀 Generate Ebook", type="primary", disabled=st.session_state.generating
@@ -131,7 +146,9 @@ with st.form("ebook_form"):
                 product_mode=product_mode,
                 chapter_count=chapter_count,
                 target_language=target_language,
+                target_languages=target_languages,
             )
+            st.session_state.quality_level = quality_level
 
             project_id = project["id"]
             st.session_state.generating = True

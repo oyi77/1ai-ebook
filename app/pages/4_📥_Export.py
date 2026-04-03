@@ -2,6 +2,7 @@ import streamlit as st
 from pathlib import Path
 import sys
 import os
+import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
@@ -54,8 +55,6 @@ for project in completed:
             st.markdown(f"**Mode:** {project['product_mode']}")
 
             if manifest_file.exists():
-                import json
-
                 with open(manifest_file) as f:
                     manifest = json.load(f)
                 st.markdown(f"**Generated:** {manifest.get('generated_at', 'Unknown')}")
@@ -104,6 +103,17 @@ for project in completed:
                     key=f"dl_pdf_nf_{project['id']}",
                 )
 
+            epub_file = project_dir / "exports" / "ebook.epub"
+            if epub_file.exists():
+                with open(epub_file, "rb") as f:
+                    st.download_button(
+                        label="📖 Download EPUB",
+                        data=f.read(),
+                        file_name=f"{project['title'].replace(' ', '_')}.epub",
+                        mime="application/epub+zip",
+                        key=f"dl_epub_{project['id']}",
+                    )
+
         st.markdown("---")
         st.markdown("**Project Files:**")
         if project_dir.exists():
@@ -115,3 +125,78 @@ for project in completed:
                         st.markdown(f"📄 `{f.name}`")
                         st.caption(f"{f.stat().st_size / 1024:.1f} KB")
                     file_idx += 1
+
+        st.markdown("---")
+        st.markdown("**🚀 Marketing:**")
+
+        mk_file = project_dir / "marketing_kit.json"
+        strategy_file = project_dir / "strategy.json"
+        outline_file = project_dir / "outline.json"
+
+        if st.button("🚀 Push to adforge", key=f"adforge_{project['id']}", help="Create a landing page + ads campaign in adforge"):
+            marketing_kit = {}
+            strategy = {}
+            outline = {}
+
+            if mk_file.exists():
+                with open(mk_file) as f:
+                    marketing_kit = json.load(f)
+            if strategy_file.exists():
+                with open(strategy_file) as f:
+                    strategy = json.load(f)
+            if outline_file.exists():
+                with open(outline_file) as f:
+                    outline = json.load(f)
+
+            pain_points = strategy.get("pain_points", [])
+            if isinstance(pain_points, list):
+                pain_points_str = "\n".join(f"- {p}" for p in pain_points[:3])
+            else:
+                pain_points_str = str(pain_points)
+
+            chapters = outline.get("chapters", [])
+            benefits = [ch.get("title", "") for ch in chapters[:5] if ch.get("title")]
+            benefits_str = "\n".join(f"- {b}" for b in benefits) if benefits else "Practical, actionable content"
+
+            suggested_price = marketing_kit.get("suggested_price", "$9.99").replace("$", "").replace("Free", "0")
+
+            payload = {
+                "name": f"{project['title']} — AI Ebook",
+                "theme": "dark",
+                "product_name": project["title"],
+                "price": suggested_price,
+                "pain_points": pain_points_str,
+                "benefits": benefits_str,
+                "cta_primary": "Get Your Copy Now",
+                "cta_secondary": "Download Free Preview",
+            }
+
+            adforge_url = os.environ.get("ADFORGE_URL", "http://localhost:3000")
+            adforge_key = os.environ.get("ADFORGE_API_KEY", "")
+
+            try:
+                import requests
+                headers = {"Content-Type": "application/json"}
+                if adforge_key:
+                    headers["Authorization"] = f"Bearer {adforge_key}"
+
+                resp = requests.post(
+                    f"{adforge_url}/api/landing",
+                    json=payload,
+                    headers=headers,
+                    timeout=10,
+                )
+
+                if resp.status_code in (200, 201):
+                    data = resp.json()
+                    lp_id = data.get("data", {}).get("id", "?")
+                    st.success(f"✅ Landing page created in adforge! ID: {lp_id}")
+                    st.info("💡 Open adforge to add your checkout link, connect Meta/TikTok ads, and publish.")
+                else:
+                    st.error(f"❌ adforge returned {resp.status_code}: {resp.text[:200]}")
+                    st.info("Make sure adforge is running at " + adforge_url)
+            except requests.exceptions.ConnectionError:
+                st.error(f"❌ Cannot connect to adforge at {adforge_url}")
+                st.info("Start adforge with `cd ~/projects/adforge && npm start`, then try again.")
+            except Exception as e:
+                st.error(f"❌ Error: {e}")

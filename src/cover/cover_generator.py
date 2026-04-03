@@ -105,6 +105,7 @@ Return only the description, no explanations."""
             "paid_ebook": (30, 64, 175),
             "bonus_content": (34, 197, 94),
             "authority": (107, 33, 168),
+            "novel": (180, 60, 80),
         }
 
         bg_color = colors.get(product_mode, (59, 130, 246))

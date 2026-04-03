@@ -202,6 +202,20 @@ class PipelineOrchestrator:
             if on_progress:
                 on_progress(92, "QA already completed — skipping...")
 
+        # Marketing Kit
+        try:
+            from src.pipeline.marketing_kit import MarketingKitGenerator
+            marketing_kit_gen = MarketingKitGenerator(ai_client=self.ai_client, projects_dir=self.projects_dir)
+            marketing_kit = marketing_kit_gen.generate(
+                project_id=project_id,
+                title=project.get("title", ""),
+                strategy=strategy,
+                outline=outline,
+            )
+            result["marketing_kit"] = marketing_kit
+        except Exception:
+            pass
+
         # Export
         if not progress["export"]:
             if on_progress:

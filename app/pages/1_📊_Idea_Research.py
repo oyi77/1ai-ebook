@@ -4,9 +4,11 @@ import sys
 import json
 import re
 from datetime import datetime
-from openai import OpenAI
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+from src.ai_client import OmnirouteClient
+_omni = OmnirouteClient()
+client = _omni.client  # the underlying openai.OpenAI instance
 
 st.set_page_config(page_title="Idea Research", page_icon="📊", layout="wide")
 
@@ -18,11 +20,6 @@ st.markdown("---")
 
 @st.cache_data(ttl=3600)
 def get_trending_niches():
-    client = OpenAI(
-        base_url="http://localhost:20128/v1",
-        api_key="sk-f0c1ddf471008e76-f92ijk-07d16379",
-        timeout=60,
-    )
     resp = client.chat.completions.create(
         model="auto/best-chat",
         messages=[
@@ -167,6 +164,24 @@ if submitted and idea:
 
         st.progress(score / 100)
         st.markdown(f"**Viability Score:** {score}/100")
+
+        with st.expander("🔍 Find Competing Ebooks", expanded=False):
+            st.caption("Real ebook data from Google Books & Open Library")
+            try:
+                from src.research.ebook_reference import search_ebooks
+                with st.spinner("Searching ebook market..."):
+                    competitors = search_ebooks(idea, language="en", max_results=5, timeout=8)
+                if competitors:
+                    st.markdown(f"**{len(competitors)} competing ebooks found:**")
+                    for ref in competitors:
+                        authors_str = ", ".join(ref.authors[:2]) if ref.authors else "Unknown"
+                        cats = ", ".join(ref.categories[:2]) if ref.categories else "—"
+                        st.markdown(f"- **{ref.title}** by {authors_str} ({ref.published_year}) — _{cats}_")
+                    st.caption(f"💡 Tip: {len(competitors)} competitors found. Differentiate by narrowing your niche or targeting a specific audience segment.")
+                else:
+                    st.info("No competing ebooks found — this could be an underserved niche!")
+            except Exception as e:
+                st.warning(f"Could not fetch competitor data: {e}")
 
         if score >= 80:
             st.success("🔥 Great idea! High potential for success.")
