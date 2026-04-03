@@ -1,0 +1,229 @@
+import json
+from pathlib import Path
+
+from src.ai_client import OmnirouteClient
+from src.pipeline.pipeline_profile import get_profile
+from src.pipeline.strategy_planner import StrategyPlanner
+from src.pipeline.outline_generator import OutlineGenerator
+from src.pipeline.manuscript_engine import ManuscriptEngine
+from src.cover.cover_generator import CoverGenerator
+from src.pipeline.qa_engine import QAEngine
+from src.export.export_orchestrator import ExportOrchestrator
+from src.db.repository import ProjectRepository
+
+
+class PipelineOrchestrator:
+    def __init__(
+        self,
+        db_path: str = "data/ebook_generator.db",
+        projects_dir: str = "projects",
+    ):
+        self.db_path = db_path
+        self.projects_dir = projects_dir
+        self.ai_client = OmnirouteClient()
+        self.repo = ProjectRepository(db_path)
+
+    def _check_progress(self, project_id: int) -> dict:
+        """Check what has already been generated for a project."""
+        project_dir = Path(self.projects_dir) / str(project_id)
+        progress = {
+            "strategy": (project_dir / "strategy.json").exists(),
+            "outline": (project_dir / "outline.json").exists(),
+            "manuscript": (project_dir / "manuscript.md").exists(),
+            "cover": (project_dir / "cover" / "cover.png").exists(),
+            "qa": (project_dir / "qa_report.json").exists(),
+            "export": (project_dir / "exports" / "ebook.docx").exists(),
+            "completed_chapters": 0,
+            "total_chapters": 0,
+        }
+
+        chapters_dir = project_dir / "chapters"
+        if chapters_dir.exists():
+            chapter_files = sorted(
+                [
+                    f
+                    for f in chapters_dir.iterdir()
+                    if f.suffix == ".md" and f.name != "manuscript.md"
+                ]
+            )
+            progress["completed_chapters"] = len(
+                [f for f in chapter_files if f.stat().st_size > 0]
+            )
+
+        outline_file = project_dir / "outline.json"
+        if outline_file.exists():
+            with open(outline_file) as f:
+                outline = json.load(f)
+                progress["total_chapters"] = len(outline.get("chapters", []))
+
+        return progress
+
+    def _load_existing_data(self, project_id: int) -> dict:
+        """Load already-generated data for resume."""
+        project_dir = Path(self.projects_dir) / str(project_id)
+        data = {}
+
+        strategy_file = project_dir / "strategy.json"
+        if strategy_file.exists():
+            with open(strategy_file) as f:
+                data["strategy"] = json.load(f)
+
+        outline_file = project_dir / "outline.json"
+        if outline_file.exists():
+            with open(outline_file) as f:
+                data["outline"] = json.load(f)
+
+        return data
+
+    def run_full_pipeline(self, project_id: int, on_progress=None) -> dict:
+        project = self.repo.get_project(project_id)
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        project_dir = Path(self.projects_dir) / str(project_id)
+        project_dir.mkdir(parents=True, exist_ok=True)
+
+        (project_dir / "chapters").mkdir(exist_ok=True)
+        (project_dir / "cover").mkdir(exist_ok=True)
+
+        self.repo.update_project_status(project_id, "generating")
+
+        # Check if we can resume
+        progress = self._check_progress(project_id)
+        existing = self._load_existing_data(project_id)
+
+        project_brief = {
+            "id": project_id,
+            "idea": project["idea"],
+            "product_mode": project["product_mode"],
+            "target_language": project["target_language"],
+        }
+
+        profile = get_profile(project_brief.get("product_mode", "lead_magnet"))
+
+        # Strategy
+        if not progress["strategy"]:
+            if on_progress:
+                on_progress(5, "Generating strategy...")
+            strategy_planner = StrategyPlanner(
+                self.ai_client, projects_dir=self.projects_dir
+            )
+            strategy = strategy_planner.generate(project_brief, profile=profile)
+        else:
+            strategy = existing.get("strategy", {})
+            if on_progress:
+                on_progress(5, "Strategy already exists — skipping...")
+
+        # Outline
+        if not progress["outline"]:
+            if on_progress:
+                on_progress(20, "Generating outline...")
+            outline_generator = OutlineGenerator(
+                self.ai_client, projects_dir=self.projects_dir
+            )
+            outline = outline_generator.generate(
+                project_brief=project_brief,
+                strategy=strategy,
+                chapter_count=project["chapter_count"],
+                profile=profile,
+            )
+        else:
+            outline = existing.get("outline", {})
+            if on_progress:
+                on_progress(20, "Outline already exists — skipping...")
+
+        # Manuscript
+        if not progress["manuscript"]:
+            if on_progress:
+                on_progress(35, "Writing manuscript...")
+            manuscript_engine = ManuscriptEngine(
+                self.ai_client, projects_dir=self.projects_dir
+            )
+
+            def manuscript_progress(progress_pct, step):
+                if on_progress:
+                    scaled = 35 + int(progress_pct * 0.5)
+                    on_progress(scaled, step)
+
+            manuscript_engine.generate(
+                project_id=project_id,
+                outline=outline,
+                strategy=strategy,
+                on_progress=manuscript_progress,
+                profile=profile,
+                language=project_brief.get("target_language", "en"),
+            )
+        else:
+            completed = progress["completed_chapters"]
+            total = progress["total_chapters"]
+            if on_progress:
+                on_progress(
+                    35 + int((completed / max(total, 1)) * 50),
+                    f"Manuscript already exists ({completed}/{total} chapters) — skipping...",
+                )
+
+        # Cover
+        if not progress["cover"]:
+            if on_progress:
+                on_progress(85, "Generating cover...")
+            cover_generator = CoverGenerator(
+                self.ai_client, projects_dir=self.projects_dir
+            )
+            cover_generator.generate(
+                project_id=project_id,
+                title=outline.get("best_title", "Ebook"),
+                topic=project["idea"],
+                tone=strategy.get("tone", "conversational"),
+                product_mode=project["product_mode"],
+                profile=profile,
+            )
+        else:
+            if on_progress:
+                on_progress(85, "Cover already exists — skipping...")
+
+        # QA
+        if not progress["qa"]:
+            if on_progress:
+                on_progress(92, "Running QA checks...")
+            qa_engine = QAEngine()
+            with open(project_dir / "manuscript.json") as f:
+                manuscript_data = json.load(f)
+
+            manuscript = {
+                "chapters": [
+                    {"title": ch.get("title"), "word_count": ch.get("word_count")}
+                    for ch in manuscript_data.get("chapters", [])
+                ]
+            }
+
+            report = qa_engine.run(manuscript, outline, strategy, profile=profile)
+            qa_engine.save_report(project_id, report, self.projects_dir)
+        else:
+            if on_progress:
+                on_progress(92, "QA already completed — skipping...")
+
+        # Export
+        if not progress["export"]:
+            if on_progress:
+                on_progress(95, "Exporting to DOCX and PDF...")
+            export_orchestrator = ExportOrchestrator(
+                db_path=self.db_path,
+                projects_dir=self.projects_dir,
+            )
+            result = export_orchestrator.export(project_id)
+        else:
+            if on_progress:
+                on_progress(95, "Exports already exist — skipping...")
+            result = {
+                "status": "completed",
+                "project_id": project_id,
+                "exports": {
+                    "docx": project_dir / "exports" / "ebook.docx",
+                    "pdf": project_dir / "exports" / "ebook.pdf",
+                },
+            }
+
+        if on_progress:
+            on_progress(100, "Complete!")
+
+        return result

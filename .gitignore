@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Ruff
+.ruff_cache/
+
+# Environment
+.env
+
+# Runtime output (not tracked)
+projects/
+data/
+
+# OMC state (session-specific)
+.omc/state/
+.sisyphus/
+.playwright-mcp/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,0 +1,60 @@
+import streamlit as st
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
+st.set_page_config(page_title="Ebook Generator", page_icon="📚", layout="wide")
+
+st.title("📚 Ebook Generator")
+st.markdown("Transform your ideas into market-ready ebooks with AI")
+
+st.markdown("---")
+st.markdown("### 🚀 Quick Start")
+
+col1, col2, col3 = st.columns(3)
+with col1:
+    st.page_link("pages/1_📊_Idea_Research.py", label="📊 Research Ideas", icon="📊")
+with col2:
+    st.page_link("pages/2_✍️_Create_Ebook.py", label="✍️ Create Ebook", icon="✍️")
+with col3:
+    st.page_link("pages/4_📥_Export.py", label="📥 Download", icon="📥")
+
+st.markdown("---")
+
+from src.db.repository import ProjectRepository
+
+db_path = Path("data/ebook_generator.db")
+db_path.parent.mkdir(exist_ok=True)
+
+if db_path.exists():
+    repo = ProjectRepository(str(db_path))
+    projects = repo.list_projects(limit=5)
+    if projects:
+        st.markdown("### Recent Projects")
+        for project in projects:
+            status_emoji = {
+                "draft": "📝",
+                "generating": "⚙️",
+                "completed": "✅",
+                "failed": "❌",
+            }.get(project["status"], "📝")
+            col1, col2, col3 = st.columns([3, 1, 1])
+            with col1:
+                st.markdown(f"**{status_emoji} {project['title']}**")
+                st.caption(project["idea"][:60])
+            with col2:
+                st.markdown(f"`{project['status']}`")
+            with col3:
+                if project["status"] == "completed":
+                    if st.button("📥 Download", key=f"dl_{project['id']}"):
+                        st.session_state["view_project"] = project["id"]
+                        st.switch_page("pages/4_📥_Export.py")
+                elif st.button("👁️ View", key=f"view_{project['id']}"):
+                    st.session_state["view_project"] = project["id"]
+                    st.switch_page("pages/3_📈_Progress.py")
+            st.divider()
+    else:
+        st.info("No projects yet. Start by researching ideas or creating a new ebook!")
+else:
+    st.info("No projects yet. Start by researching ideas or creating a new ebook!")

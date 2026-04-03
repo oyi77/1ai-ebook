@@ -1,0 +1,242 @@
+import streamlit as st
+from pathlib import Path
+import sys
+import sqlite3
+import threading
+import time
+import requests
+
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+st.set_page_config(page_title="Create Ebook", page_icon="✍️", layout="wide")
+
+st.title("✍️ Create Ebook")
+st.markdown("Fill in your ebook details and let AI do the writing")
+
+from src.pipeline.intake import ProjectIntake
+from src.pipeline.orchestrator import PipelineOrchestrator
+from src.db.schema import create_tables
+
+db_path = Path("data/ebook_generator.db")
+db_path.parent.mkdir(exist_ok=True)
+
+conn = sqlite3.connect(db_path)
+create_tables(conn)
+conn.close()
+
+
+@st.cache_data(ttl=300)
+def get_available_models():
+    try:
+        resp = requests.get("http://localhost:20128/v1/models", timeout=10)
+        if resp.status_code == 200:
+            data = resp.json()
+            return [m["id"] for m in data.get("data", [])]
+    except Exception:
+        pass
+    return ["auto/best-chat", "auto/best-fast", "auto/best-reasoning"]
+
+
+available_models = get_available_models()
+
+if "generating" not in st.session_state:
+    st.session_state.generating = False
+if "progress" not in st.session_state:
+    st.session_state.progress = 0
+if "progress_msg" not in st.session_state:
+    st.session_state.progress_msg = ""
+if "generation_error" not in st.session_state:
+    st.session_state.generation_error = None
+if "generated_project_id" not in st.session_state:
+    st.session_state.generated_project_id = None
+
+pre_idea = st.session_state.get("researched_idea", "")
+pre_category = st.session_state.get("researched_category", "")
+
+with st.form("ebook_form"):
+    col1, col2 = st.columns(2)
+
+    with col1:
+        idea = st.text_area(
+            "Your Ebook Idea",
+            value=pre_idea if pre_idea else "",
+            placeholder="e.g., How to start a successful blog from scratch",
+            help="Describe your ebook idea in detail (10-500 characters)",
+        )
+
+        NOVEL_GENRES = ["Fantasy", "Romance", "Thriller", "Sci-Fi", "Mystery", "Literary Fiction", "Historical Fiction", "Horror"]
+
+        product_mode = st.selectbox(
+            "Product Mode",
+            options=["lead_magnet", "paid_ebook", "bonus_content", "authority", "novel"],
+            format_func=lambda x: {
+                "lead_magnet": "Lead Magnet (Free, builds email list)",
+                "paid_ebook": "Paid Ebook ($)",
+                "bonus_content": "Bonus Content (For existing customers)",
+                "authority": "Authority (Thought leadership)",
+                "novel": "Novel (Fiction storytelling)",
+            }[x],
+        )
+
+        genre = None
+        if product_mode == "novel":
+            genre = st.selectbox(
+                "Genre",
+                NOVEL_GENRES,
+                help="The genre affects writing style, tone, and cover design."
+            )
+
+    with col2:
+        chapter_count = st.slider(
+            "Number of Chapters",
+            min_value=2,
+            max_value=20,
+            value=5,
+            help="How many chapters should your ebook have?",
+        )
+
+        target_language = st.selectbox(
+            "Target Language",
+            options=["en", "es", "fr", "de", "pt", "it", "zh"],
+            format_func=lambda x: {
+                "en": "English",
+                "es": "Spanish",
+                "fr": "French",
+                "de": "German",
+                "pt": "Portuguese",
+                "it": "Italian",
+                "zh": "Chinese",
+            }[x],
+        )
+
+        ai_model = st.selectbox(
+            "AI Model",
+            options=available_models,
+            help="Choose the AI model for content generation (fetched from OmniRoute)",
+        )
+
+    submitted = st.form_submit_button(
+        "🚀 Generate Ebook", type="primary", disabled=st.session_state.generating
+    )
+
+    if submitted:
+        if len(idea) < 10:
+            st.error("Idea must be at least 10 characters")
+        elif len(idea) > 500:
+            st.error("Idea must not exceed 500 characters")
+        else:
+            intake = ProjectIntake(str(db_path))
+            project = intake.create_project(
+                idea=idea,
+                product_mode=product_mode,
+                chapter_count=chapter_count,
+                target_language=target_language,
+            )
+
+            project_id = project["id"]
+            st.session_state.generating = True
+            st.session_state.progress = 0
+            st.session_state.progress_msg = "Starting..."
+            st.session_state.generation_error = None
+            st.session_state.generated_project_id = project_id
+
+            progress_bar = st.progress(0, text="Starting generation...")
+            status_text = st.empty()
+
+            def on_progress(pct, msg):
+                st.session_state.progress = pct
+                st.session_state.progress_msg = msg
+                progress_bar.progress(pct / 100, text=msg)
+                status_text.text(msg)
+
+            try:
+                orchestrator = PipelineOrchestrator(
+                    db_path=str(db_path),
+                    projects_dir="projects",
+                )
+                result = orchestrator.run_full_pipeline(
+                    project_id, on_progress=on_progress
+                )
+
+                st.session_state.generating = False
+                st.session_state.generated_project_id = project_id
+                st.success(f"✅ Ebook generated successfully! Project ID: {project_id}")
+                st.markdown(f"**Files created:**")
+                st.markdown(f"- 📄 DOCX: `{result['exports']['docx']}`")
+                st.markdown(f"- 📕 PDF: `{result['exports']['pdf']}`")
+
+            except Exception as e:
+                st.session_state.generating = False
+                st.session_state.generation_error = str(e)
+                st.error(f"❌ Generation failed: {e}")
+                st.info("You can retry by submitting the form again.")
+
+# Handle resume from Progress page
+resume_id = st.session_state.get("generate_project_id")
+if resume_id and not st.session_state.generating:
+    from src.pipeline.orchestrator import PipelineOrchestrator as PO
+
+    orchestrator = PO(db_path=str(db_path), projects_dir="projects")
+    prog = orchestrator._check_progress(resume_id)
+    completed = prog["completed_chapters"]
+    total = prog["total_chapters"]
+    steps_done = sum(
+        [
+            prog["strategy"],
+            prog["outline"],
+            bool(completed > 0),
+            prog["cover"],
+            prog["qa"],
+            prog["export"],
+        ]
+    )
+    pct = int((steps_done / 6) * 100)
+
+    st.info(
+        f"📋 Project #{resume_id} is {pct}% complete ({completed}/{total} chapters)"
+    )
+
+    if st.button("▶️ Resume Generation", type="primary", key="resume_btn"):
+        st.session_state.generating = True
+        st.session_state.progress = pct
+        st.session_state.progress_msg = "Resuming..."
+        st.session_state.generation_error = None
+        st.session_state.generated_project_id = resume_id
+
+        progress_bar = st.progress(pct / 100, text="Resuming generation...")
+        status_text = st.empty()
+
+        def on_progress(pct, msg):
+            st.session_state.progress = pct
+            st.session_state.progress_msg = msg
+            progress_bar.progress(pct / 100, text=msg)
+            status_text.text(msg)
+
+        try:
+            orchestrator = PO(db_path=str(db_path), projects_dir="projects")
+            result = orchestrator.run_full_pipeline(resume_id, on_progress=on_progress)
+
+            st.session_state.generating = False
+            st.session_state.generated_project_id = resume_id
+            st.success(f"✅ Ebook generated successfully! Project ID: {resume_id}")
+            st.markdown(f"**Files created:**")
+            st.markdown(f"- 📄 DOCX: `{result['exports']['docx']}`")
+            st.markdown(f"- 📕 PDF: `{result['exports']['pdf']}`")
+
+        except Exception as e:
+            st.session_state.generating = False
+            st.session_state.generation_error = str(e)
+            st.error(f"❌ Generation failed: {e}")
+            st.info("You can retry by clicking Resume again.")
+
+if st.session_state.generated_project_id and not st.session_state.generating:
+    if st.button("📥 Go to Download Page", type="primary", key="go_to_export"):
+        st.session_state["view_project"] = st.session_state.generated_project_id
+        st.switch_page("pages/4_📥_Export.py")
+
+if st.session_state.generating:
+    st.info("⚙️ Generation in progress... Please wait.")
+    st.progress(st.session_state.progress / 100, text=st.session_state.progress_msg)
+
+if st.session_state.generation_error:
+    st.error(f"❌ Last error: {st.session_state.generation_error}")
