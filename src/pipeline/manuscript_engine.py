@@ -339,7 +339,12 @@ class ManuscriptEngine:
             _tokens = int(len(section.split()) * 1.3)
             self.model_tracker.record(sub_model, "manuscript_subchapter", _success, _tokens, _latency)
             self.token_calibrator.record("subchapter", sub_tokens, len(section.split()))
-            parts.append(f"\n\n### {sub}\n\n{section.strip()}")
+            # Strip any heading the AI added despite instructions, then prepend our own
+            section_body = "\n".join(
+                line for i, line in enumerate(section.strip().splitlines())
+                if not (i == 0 and line.startswith("#"))
+            )
+            parts.append(f"\n\n### {sub}\n\n{section_body.strip()}")
 
         # 3. Summary + transition
         outro_target = max(150, chapter.get("estimated_word_count", 2000) * 0.10)

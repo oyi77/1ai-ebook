@@ -28,7 +28,11 @@ class QAEngine:
 
         structure_issues = self._check_structure(manuscript, outline)
         issues.extend(structure_issues)
-        scores["structure"] = 0.0 if structure_issues else 1.0
+
+        heading_issues = self._check_duplicate_headings(manuscript)
+        issues.extend(heading_issues)
+
+        scores["structure"] = 0.0 if (structure_issues or heading_issues) else 1.0
 
         word_count_issues = self._check_word_count(manuscript, outline)
         issues.extend(word_count_issues)
@@ -71,6 +75,19 @@ class QAEngine:
         if missing:
             issues.append(f"Missing chapters: {', '.join(missing)}")
 
+        return issues
+
+    def _check_duplicate_headings(self, manuscript: dict) -> list[str]:
+        issues = []
+        for ch in manuscript.get("chapters", []):
+            content = ch.get("content", "")
+            if not content:
+                continue
+            chapter_num = ch.get("chapter", "?")
+            headings = [line.strip() for line in content.splitlines() if line.startswith("#")]
+            if len(headings) != len(set(headings)):
+                dupes = [h for h in set(headings) if headings.count(h) > 1]
+                issues.append(f"Chapter {chapter_num} has duplicate headings: {', '.join(dupes[:3])}")
         return issues
 
     def _check_word_count(self, manuscript: dict, outline: dict) -> list[str]:

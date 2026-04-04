@@ -199,10 +199,17 @@ class PipelineOrchestrator:
             with open(project_dir / "manuscript.json") as f:
                 manuscript_data = json.load(f)
 
+            chapters_dir = project_dir / "chapters"
             manuscript = {
                 "chapters": [
-                    {"title": ch.get("title"), "word_count": ch.get("word_count")}
-                    for ch in manuscript_data.get("chapters", [])
+                    {
+                        "chapter": ch.get("chapter", i + 1),
+                        "title": ch.get("title"),
+                        "word_count": ch.get("word_count"),
+                        "content": (chapters_dir / f"{ch.get('chapter', i + 1)}.md").read_text()
+                        if (chapters_dir / f"{ch.get('chapter', i + 1)}.md").exists() else "",
+                    }
+                    for i, ch in enumerate(manuscript_data.get("chapters", []))
                 ]
             }
 
