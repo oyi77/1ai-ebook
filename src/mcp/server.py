@@ -263,7 +263,7 @@ TOOLS = [
                 "idea": {"type": "string", "description": "Core idea / brief description"},
                 "product_mode": {
                     "type": "string",
-                    "enum": ["lead_magnet", "paid_ebook", "bonus_content", "authority"],
+                    "enum": ["lead_magnet", "paid_ebook", "bonus_content", "authority", "novel"],
                     "default": "lead_magnet",
                     "description": "Product mode",
                 },

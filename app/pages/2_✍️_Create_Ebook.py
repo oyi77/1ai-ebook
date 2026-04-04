@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from pathlib import Path
 import sys
@@ -33,7 +34,8 @@ conn.close()
 @st.cache_data(ttl=300)
 def get_available_models():
     try:
-        resp = requests.get("http://localhost:20128/v1/models", timeout=10)
+        base_url = os.getenv("OMNIROUTE_BASE_URL", "http://localhost:20128/v1")
+        resp = requests.get(f"{base_url}/models", timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             return [m["id"] for m in data.get("data", [])]

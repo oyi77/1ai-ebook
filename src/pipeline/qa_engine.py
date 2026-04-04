@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.ai_client import OmnirouteClient
+from src.config import get_config
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -35,7 +36,8 @@ class QAEngine:
 
         if strategy:
             consistency_score = self._check_consistency(manuscript, strategy)
-            scores["consistency"] = consistency_score
+            if consistency_score is not None:
+                scores["consistency"] = consistency_score
 
         from src.pipeline.content_safety import ContentSafety
         safety = ContentSafety()
@@ -84,7 +86,7 @@ class QAEngine:
             )
             target = outline_ch.get("estimated_word_count", 500)
 
-            tolerance = 0.2
+            tolerance = get_config().qa_word_count_tolerance
             if word_count < target * (1 - tolerance) or word_count > target * (
                 1 + tolerance
             ):
@@ -94,12 +96,12 @@ class QAEngine:
 
         return issues
 
-    def _check_consistency(self, manuscript: dict, strategy: dict) -> float:
+    def _check_consistency(self, manuscript: dict, strategy: dict) -> float | None:
         if self.quality_level != "thorough" or self.ai_client is None:
-            return 0.9
+            return None
         chapters = manuscript.get("chapters", [])
         if not chapters:
-            return 0.9
+            return None
         sample_titles = [f"- {ch.get('title', f'Chapter {i+1}')}" for i, ch in enumerate(chapters)]
         tone = strategy.get("tone", "conversational")
         prompt = (
@@ -114,10 +116,10 @@ class QAEngine:
                 system_prompt="You are a book editor evaluating manuscript consistency. Be precise and concise.",
                 response_schema={"score": float, "reason": str},
             )
-            score = float(result.get("score", 0.9))
+            score = float(result.get("score", 0.0))
             return max(0.0, min(1.0, score))
         except Exception:
-            return 0.9
+            return None
 
     def save_report(
         self, project_id: int, report: dict, projects_dir: Path | str = "projects"

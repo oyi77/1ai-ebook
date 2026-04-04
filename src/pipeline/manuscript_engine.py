@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 from src.ai_client import OmnirouteClient
+from src.config import get_config
 from src.i18n.languages import language_instruction
+from src.pipeline.model_tracker import ModelTracker
 from src.pipeline.style_context import StyleContext
+from src.pipeline.token_calibrator import TokenCalibrator
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -20,6 +24,8 @@ class ManuscriptEngine:
     ):
         self.ai_client = ai_client or OmnirouteClient()
         self.projects_dir = Path(projects_dir)
+        self.model_tracker = ModelTracker()
+        self.token_calibrator = TokenCalibrator()
 
     def generate(
         self,
@@ -105,6 +111,22 @@ class ManuscriptEngine:
 
             style_ctx.previous_chapter_ending = chapter_content[-400:]
 
+        # Retry chapters that came out too short
+        retry_fixes = self._retry_failed_chapters(
+            chapters=chapters,
+            chapters_dir=chapters_dir,
+            strategy=strategy,
+            language=language,
+            style_ctx=style_ctx,
+            profile=profile,
+            manuscript_model=manuscript_model,
+        )
+        # Update chapter_metadata word counts for any retried chapters
+        for chapter_num, new_content in retry_fixes.items():
+            for meta in chapter_metadata:
+                if meta["chapter"] == chapter_num:
+                    meta["word_count"] = len(new_content.split())
+
         manuscript_file = project_dir / "manuscript.md"
         with open(manuscript_file, "w") as f:
             f.write("".join(manuscript_content))
@@ -143,6 +165,51 @@ class ManuscriptEngine:
                     editions[lang] = {"error": str(e)}
 
         return {"manuscript": manuscript_file, "chapters": chapter_metadata, "editions": editions}
+
+    def _retry_failed_chapters(
+        self,
+        chapters: list[dict],
+        chapters_dir: Path,
+        strategy: dict,
+        language: str,
+        style_ctx,
+        profile,
+        manuscript_model: str | None,
+        max_retries: int | None = None,
+    ) -> dict[int, str]:
+        """Re-generate chapters that are below the minimum word count. Returns {chapter_num: new_content}."""
+        cfg = get_config()
+        max_retries = max_retries or cfg.qa_max_retry_attempts
+        fixes: dict[int, str] = {}
+
+        for i, chapter in enumerate(chapters, 1):
+            chapter_file = chapters_dir / f"{i}.md"
+            if not chapter_file.exists():
+                continue
+            content = chapter_file.read_text()
+            word_count = len(content.split())
+            target = chapter.get("estimated_word_count", cfg.qa_min_chapter_words)
+            min_words = int(target * (1 - cfg.qa_word_count_tolerance))
+            if word_count >= min_words:
+                continue
+
+            for attempt in range(max_retries):
+                retry_content = self._generate_chapter(
+                    chapter=chapter,
+                    strategy=strategy,
+                    chapter_num=i,
+                    total_chapters=len(chapters),
+                    language=language,
+                    style_ctx=style_ctx,
+                    profile=profile,
+                    manuscript_model=manuscript_model,
+                )
+                if len(retry_content.split()) >= min_words:
+                    chapter_file.write_text(retry_content)
+                    fixes[i] = retry_content
+                    break
+
+        return fixes
 
     def _generate_edition(
         self,
@@ -214,7 +281,7 @@ class ManuscriptEngine:
 
         import os
         # Use caller-supplied model; fall back to env var, then hardcoded default.
-        model = manuscript_model or os.getenv("EBOOK_MANUSCRIPT_MODEL", "auto/free-chat")
+        _default_model = os.getenv("EBOOK_MANUSCRIPT_MODEL", get_config().default_model)
 
         base_system = (
             f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
@@ -226,6 +293,10 @@ class ManuscriptEngine:
         parts: list[str] = []
 
         # 1. Hook + introduction
+        intro_target = max(300, chapter.get("estimated_word_count", 2000) * 0.15)
+        intro_tokens = self.token_calibrator.calibrated_tokens("intro", int(intro_target))
+        intro_model = manuscript_model or self.model_tracker.best_model("manuscript_intro", default=_default_model)
+        _t0 = time.time()
         intro = self.ai_client.generate_text(
             prompt=(
                 f"Write the opening for chapter '{title}'.\n"
@@ -235,14 +306,23 @@ class ManuscriptEngine:
                 "Do NOT include the chapter title. Start directly with the hook."
             ),
             system_prompt=base_system,
-            model=model,
-            max_tokens=600,
+            model=intro_model,
+            max_tokens=intro_tokens,
             temperature=0.7,
         )
+        _latency = (time.time() - _t0) * 1000
+        _success = len(intro.strip()) > 50
+        _tokens = int(len(intro.split()) * 1.3)
+        self.model_tracker.record(intro_model, "manuscript_intro", _success, _tokens, _latency)
+        self.token_calibrator.record("intro", intro_tokens, len(intro.split()))
         parts.append(intro.strip())
 
         # 2. Each subchapter section
+        sub_target = max(400, chapter.get("estimated_word_count", 2000) / max(len(subchapters), 1) * 0.7)
+        sub_tokens = self.token_calibrator.calibrated_tokens("subchapter", int(sub_target))
+        sub_model = manuscript_model or self.model_tracker.best_model("manuscript_subchapter", default=_default_model)
         for sub in subchapters:
+            _t0 = time.time()
             section = self.ai_client.generate_text(
                 prompt=(
                     f"Write the section '{sub}' for chapter '{title}'.\n"
@@ -250,13 +330,22 @@ class ManuscriptEngine:
                     "Be specific, practical, and engaging. Do NOT include a heading — start directly with prose."
                 ),
                 system_prompt=base_system,
-                model=model,
-                max_tokens=1000,
+                model=sub_model,
+                max_tokens=sub_tokens,
                 temperature=0.7,
             )
+            _latency = (time.time() - _t0) * 1000
+            _success = len(section.strip()) > 50
+            _tokens = int(len(section.split()) * 1.3)
+            self.model_tracker.record(sub_model, "manuscript_subchapter", _success, _tokens, _latency)
+            self.token_calibrator.record("subchapter", sub_tokens, len(section.split()))
             parts.append(f"\n\n### {sub}\n\n{section.strip()}")
 
         # 3. Summary + transition
+        outro_target = max(150, chapter.get("estimated_word_count", 2000) * 0.10)
+        outro_tokens = self.token_calibrator.calibrated_tokens("outro", int(outro_target))
+        outro_model = manuscript_model or self.model_tracker.best_model("manuscript_outro", default=_default_model)
+        _t0 = time.time()
         outro = self.ai_client.generate_text(
             prompt=(
                 f"Write the closing for chapter '{title}'.\n"
@@ -265,10 +354,15 @@ class ManuscriptEngine:
                 "- Transition sentence: one sentence bridging to the next chapter"
             ),
             system_prompt=base_system,
-            model=model,
-            max_tokens=300,
+            model=outro_model,
+            max_tokens=outro_tokens,
             temperature=0.7,
         )
+        _latency = (time.time() - _t0) * 1000
+        _success = len(outro.strip()) > 50
+        _tokens = int(len(outro.split()) * 1.3)
+        self.model_tracker.record(outro_model, "manuscript_outro", _success, _tokens, _latency)
+        self.token_calibrator.record("outro", outro_tokens, len(outro.split()))
         parts.append(f"\n\n{outro.strip()}")
 
         return "\n\n".join(parts)

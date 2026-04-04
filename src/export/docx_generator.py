@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from docx import Document
 from docx.shared import Inches
@@ -62,7 +63,7 @@ class DocxGenerator:
     def _add_copyright_page(self, doc: Document) -> None:
         doc.add_paragraph("")
         doc.add_paragraph("")
-        doc.add_paragraph("Copyright © 2026")
+        doc.add_paragraph(f"Copyright © {datetime.now().year}")
         doc.add_paragraph("All rights reserved.")
 
     def _add_toc(self, doc: Document, project_id: int) -> None:

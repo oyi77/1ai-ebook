@@ -38,9 +38,7 @@ class OmnirouteClient:
         self.base_url = base_url or os.getenv(
             "OMNIROUTE_BASE_URL", "http://localhost:20128/v1"
         )
-        self.api_key = api_key or os.getenv(
-            "OMNIROUTE_API_KEY", "sk-f0c1ddf471008e76-f92ijk-07d16379"
-        )
+        self.api_key = api_key or os.getenv("OMNIROUTE_API_KEY", "")
         self.max_retries = max_retries
         self.timeout = timeout
         self.client = OpenAI(

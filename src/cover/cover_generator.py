@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING
 from PIL import Image, ImageDraw, ImageFont
 
 from src.ai_client import OmnirouteClient
+from src.config import get_config
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -97,6 +98,20 @@ Return only the description, no explanations."""
 
         return response
 
+    def _find_font(self, name: str, size: int):
+        candidates = [
+            f"/usr/share/fonts/truetype/dejavu/{name}",
+            f"/usr/share/fonts/dejavu/{name}",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "C:/Windows/Fonts/arial.ttf",
+        ]
+        for path in candidates:
+            try:
+                return ImageFont.truetype(path, size)
+            except Exception:
+                continue
+        return ImageFont.load_default()
+
     def _generate_cover_image(
         self,
         project_dir: Path,
@@ -112,7 +127,8 @@ Return only the description, no explanations."""
         }
 
         bg_color = colors.get(product_mode, (59, 130, 246))
-        width, height = 1200, 1600
+        cfg = get_config()
+        width, height = cfg.cover_width, cfg.cover_height
 
         # Draw subtle gradient by blending base color with a lighter shade row by row
         img = Image.new("RGB", (width, height), bg_color)
@@ -138,16 +154,8 @@ Return only the description, no explanations."""
             width=border,
         )
 
-        try:
-            font_large = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 80
-            )
-            font_small = ImageFont.truetype(
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 40
-            )
-        except Exception:
-            font_large = ImageFont.load_default()
-            font_small = ImageFont.load_default()
+        font_large = self._find_font("DejaVuSans-Bold.ttf", cfg.cover_title_font_size)
+        font_small = self._find_font("DejaVuSans.ttf", cfg.cover_watermark_font_size)
 
         bbox = draw.textbbox((0, 0), title, font=font_large)
         text_width = bbox[2] - bbox[0]

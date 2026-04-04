@@ -25,6 +25,7 @@ coverage.xml
 
 # Environment
 .env
+config.json
 
 # Runtime output (not tracked)
 projects/
