@@ -31,6 +31,7 @@ class ManuscriptEngine:
         language: str = "en",
         quality_level: str = "fast",
         target_languages: list[str] | None = None,
+        manuscript_model: str | None = None,
     ) -> dict:
         from src.pipeline.refinement_engine import RefinementEngine
 
@@ -79,6 +80,7 @@ class ManuscriptEngine:
                 language=language,
                 style_ctx=style_ctx,
                 profile=profile,
+                manuscript_model=manuscript_model,
             )
 
             chapter_content = refiner.refine(chapter_content)
@@ -195,6 +197,7 @@ class ManuscriptEngine:
         language: str = "en",
         style_ctx: StyleContext | None = None,
         profile: "PipelineProfile | None" = None,
+        manuscript_model: str | None = None,
     ) -> str:
         title = chapter.get("title", "")
         summary = chapter.get("summary", "")
@@ -210,9 +213,8 @@ class ManuscriptEngine:
         )
 
         import os
-        # Use a configurable model — defaults to auto/kimi (Kimi K2.5) which is
-        # reliably available; auto/best-chat can route to gated models (e.g. Claude Sonnet)
-        manuscript_model = os.getenv("EBOOK_MANUSCRIPT_MODEL", "auto/free-chat")
+        # Use caller-supplied model; fall back to env var, then hardcoded default.
+        model = manuscript_model or os.getenv("EBOOK_MANUSCRIPT_MODEL", "auto/free-chat")
 
         base_system = (
             f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
@@ -233,7 +235,7 @@ class ManuscriptEngine:
                 "Do NOT include the chapter title. Start directly with the hook."
             ),
             system_prompt=base_system,
-            model=manuscript_model,
+            model=model,
             max_tokens=600,
             temperature=0.7,
         )
@@ -248,7 +250,7 @@ class ManuscriptEngine:
                     "Be specific, practical, and engaging. Do NOT include a heading — start directly with prose."
                 ),
                 system_prompt=base_system,
-                model=manuscript_model,
+                model=model,
                 max_tokens=1000,
                 temperature=0.7,
             )
@@ -263,7 +265,7 @@ class ManuscriptEngine:
                 "- Transition sentence: one sentence bridging to the next chapter"
             ),
             system_prompt=base_system,
-            model=manuscript_model,
+            model=model,
             max_tokens=300,
             temperature=0.7,
         )

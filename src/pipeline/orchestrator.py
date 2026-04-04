@@ -75,7 +75,7 @@ class PipelineOrchestrator:
 
         return data
 
-    def run_full_pipeline(self, project_id: int, on_progress=None) -> dict:
+    def run_full_pipeline(self, project_id: int, on_progress=None, manuscript_model: str | None = None) -> dict:
         project = self.repo.get_project(project_id)
         if not project:
             raise ValueError(f"Project {project_id} not found")
@@ -89,14 +89,14 @@ class PipelineOrchestrator:
         self.repo.update_project_status(project_id, "generating")
 
         try:
-            return self._run_pipeline(project_id, project, project_dir, on_progress)
+            return self._run_pipeline(project_id, project, project_dir, on_progress, manuscript_model)
         except Exception as exc:
             self.repo.update_project_status(project_id, "failed")
             if on_progress:
                 on_progress(0, f"Pipeline failed: {exc}")
             raise
 
-    def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress) -> dict:
+    def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress, manuscript_model: str | None = None) -> dict:
         # Check if we can resume
         progress = self._check_progress(project_id)
         existing = self._load_existing_data(project_id)
@@ -161,6 +161,7 @@ class PipelineOrchestrator:
                 on_progress=manuscript_progress,
                 profile=profile,
                 language=project_brief.get("target_language", "en"),
+                manuscript_model=manuscript_model,
             )
         else:
             completed = progress["completed_chapters"]

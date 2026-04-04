@@ -176,7 +176,7 @@ with st.form("ebook_form"):
                     projects_dir="projects",
                 )
                 result = orchestrator.run_full_pipeline(
-                    project_id, on_progress=on_progress
+                    project_id, on_progress=on_progress, manuscript_model=ai_model
                 )
 
                 st.session_state.generating = False
@@ -235,7 +235,7 @@ if resume_id and not st.session_state.generating:
 
         try:
             orchestrator = PO(db_path=str(db_path), projects_dir="projects")
-            result = orchestrator.run_full_pipeline(resume_id, on_progress=on_progress)
+            result = orchestrator.run_full_pipeline(resume_id, on_progress=on_progress, manuscript_model=None)
 
             st.session_state.generating = False
             st.session_state.generated_project_id = resume_id
