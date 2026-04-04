@@ -7,15 +7,36 @@ except ImportError as e:
 
 import re
 from pathlib import Path
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 CSS = """\
-body { font-family: Georgia, serif; margin: 2em; line-height: 1.6; }
-h1 { color: #333; font-size: 2em; margin-top: 1em; }
-h2 { color: #555; font-size: 1.5em; margin-top: 0.8em; }
-p { margin: 0.5em 0; }
+body {
+    font-family: Georgia, serif;
+    line-height: 1.5;
+    font-size: 1em;
+    margin: 0 1em;
+}
+h1 { color: #333; font-size: 2em; margin-top: 1em; page-break-after: avoid; }
+h2 { color: #555; font-size: 1.5em; margin-top: 0.8em; page-break-after: avoid; }
+h3 { page-break-after: avoid; }
+p {
+    margin-top: 0.8em;
+    margin-bottom: 0.8em;
+    text-indent: 0;
+}
 strong { font-weight: bold; }
 em { font-style: italic; }
+section.chapter { page-break-before: always; }
+.callout {
+    border-left: 3px solid #666;
+    padding-left: 1em;
+    margin: 1em 0;
+    font-style: italic;
+}
+.section-break { text-align: center; margin: 1.5em 0; }
 """
 
 
@@ -33,8 +54,15 @@ def _md_to_html(text: str) -> str:
         para = para.strip()
         if not para:
             continue
+        # Section break markers
+        if re.match(r"^\*\s+\*\s+\*$", para) or re.match(r"^-{3,}$", para):
+            parts.append('<p class="section-break">&#x2042;</p>')
+        # Callout: blockquote lines starting with > **Key Insight:**
+        elif para.startswith("&gt; ") or para.startswith("> "):
+            inner = re.sub(r"^&gt;\s*|^>\s*", "", para, flags=re.MULTILINE)
+            parts.append(f'<aside epub:type="tip" class="callout">{inner}</aside>')
         # Don't double-wrap heading lines that might sneak in
-        if para.startswith("<h"):
+        elif para.startswith("<h"):
             parts.append(para)
         else:
             parts.append(f"<p>{para}</p>")
@@ -100,8 +128,8 @@ class EpubGenerator:
             try:
                 cover_data = cover_file.read_bytes()
                 book.set_cover("cover.png", cover_data)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to add cover to EPUB", error=str(e))
 
         # Parse manuscript into chapters
         manuscript_file = project_dir / "manuscript.md"
@@ -117,21 +145,33 @@ class EpubGenerator:
             # Fallback: single title page
             chapters = [{"title": title, "body": subtitle or ""}]
 
+        total_chapters = len(chapters)
         for idx, ch in enumerate(chapters, start=1):
             ch_title = ch["title"]
             ch_body_html = _md_to_html(ch["body"])
 
+            # Assign epub:type based on chapter position
+            if idx == 1:
+                epub_type = "introduction"
+            elif idx == total_chapters:
+                epub_type = "conclusion"
+            else:
+                epub_type = "chapter"
+
             html_content = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'
                 f'<!DOCTYPE html>'
-                f"<html xmlns=\"http://www.w3.org/1999/xhtml\">"
+                f'<html xmlns="http://www.w3.org/1999/xhtml"'
+                f' xmlns:epub="http://www.idpf.org/2007/ops">'
                 f"<head>"
                 f'<title>{ch_title}</title>'
                 f'<link rel="stylesheet" type="text/css" href="../style/main.css"/>'
                 f"</head>"
                 f"<body>"
+                f'<section epub:type="{epub_type}" class="chapter">'
                 f"<h2>{ch_title}</h2>"
                 f"{ch_body_html}"
+                f"</section>"
                 f"</body></html>"
             )
 

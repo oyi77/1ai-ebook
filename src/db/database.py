@@ -18,3 +18,25 @@ class DatabaseManager:
 
         with self.get_connection() as conn:
             create_tables(conn)
+        self._migrate_schema()
+
+    def _migrate_schema(self):
+        """Apply schema migrations for existing databases."""
+        with self.get_connection() as conn:
+            cursor = conn.execute("PRAGMA index_list(project_metadata)")
+            indexes = cursor.fetchall()
+            has_unique = any("project_id" in str(idx) for idx in indexes)
+            if not has_unique:
+                conn.executescript("""
+                    CREATE TABLE IF NOT EXISTS project_metadata_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+                        key TEXT NOT NULL,
+                        value TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(project_id, key)
+                    );
+                    INSERT OR IGNORE INTO project_metadata_new SELECT * FROM project_metadata;
+                    DROP TABLE project_metadata;
+                    ALTER TABLE project_metadata_new RENAME TO project_metadata;
+                """)

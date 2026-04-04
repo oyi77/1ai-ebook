@@ -32,11 +32,26 @@ def create_tables(conn):
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS project_metadata (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER NOT NULL,
+            project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
             key TEXT NOT NULL,
             value TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (project_id) REFERENCES projects(id)
+            UNIQUE(project_id, key)
+        )
+    """)
+
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS integration_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            integration_id TEXT NOT NULL,
+            event TEXT NOT NULL,
+            status TEXT NOT NULL,
+            http_status INTEGER,
+            error TEXT,
+            consecutive_failures INTEGER DEFAULT 0,
+            circuit_open INTEGER DEFAULT 0,
+            circuit_open_until TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     """)
 

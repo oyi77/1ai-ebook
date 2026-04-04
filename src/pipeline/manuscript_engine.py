@@ -14,6 +14,7 @@ from src.pipeline.token_calibrator import TokenCalibrator
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
+    from src.pipeline.style_guide import StyleGuide
 
 
 class ManuscriptEngine:
@@ -38,6 +39,8 @@ class ManuscriptEngine:
         quality_level: str = "fast",
         target_languages: list[str] | None = None,
         manuscript_model: str | None = None,
+        style_ctx: Optional[StyleContext] = None,
+        style_guide: "StyleGuide | None" = None,
     ) -> dict:
         from src.pipeline.refinement_engine import RefinementEngine
 
@@ -53,7 +56,11 @@ class ManuscriptEngine:
         if on_progress:
             on_progress(0, "Starting manuscript generation...")
 
-        style_ctx = StyleContext(tone=strategy.get("tone", "conversational"))
+        if style_ctx is None:
+            style_ctx = StyleContext.load_or_default(
+                project_dir / "style_context.json",
+                tone=strategy.get("tone", "conversational"),
+            )
 
         if profile and getattr(profile, 'is_fiction', False):
             characters = []
@@ -87,16 +94,39 @@ class ManuscriptEngine:
                 style_ctx=style_ctx,
                 profile=profile,
                 manuscript_model=manuscript_model,
+                style_guide=style_guide,
             )
 
             chapter_content = refiner.refine(chapter_content)
+
+            # Extract terminology for voice consistency (skip if too short or AI unavailable)
+            if len(chapter_content.split()) > 100:
+                try:
+                    term_result = self.ai_client.generate_structured(
+                        prompt=(
+                            f"From this chapter excerpt, identify 1-2 domain-specific terms or metaphors "
+                            f"that should be used consistently throughout the ebook.\n\n"
+                            f"{chapter_content[:800]}\n\n"
+                            "Return JSON: {\"terms\": [{\"term\": \"string\", \"definition\": \"1 sentence\"}]}"
+                        ),
+                        system_prompt="You are an editor tracking terminology for consistency. Be concise.",
+                        response_schema={"terms": list},
+                        max_tokens=200,
+                        temperature=0.3,
+                    )
+                    if isinstance(term_result, dict):
+                        for t in term_result.get("terms", []):
+                            if isinstance(t, dict) and t.get("term"):
+                                style_ctx.established_terminology[t["term"]] = t.get("definition", "")
+                except Exception:
+                    pass  # term extraction is best-effort, never block chapter generation
 
             chapter_file = chapters_dir / f"{i}.md"
             with open(chapter_file, "w") as f:
                 f.write(chapter_content)
 
             manuscript_content.append(
-                f"\n\n## {chapter.get('title', f'Chapter {i}')}\n\n"
+                f"\n\n---\n\n## Chapter {i}: {chapter.get('title', f'Chapter {i}')}\n\n"
             )
             manuscript_content.append(chapter_content)
 
@@ -110,6 +140,7 @@ class ManuscriptEngine:
             )
 
             style_ctx.previous_chapter_ending = chapter_content[-400:]
+            style_ctx.save(project_dir / "style_context.json")
 
         # Retry chapters that came out too short
         retry_fixes = self._retry_failed_chapters(
@@ -120,6 +151,7 @@ class ManuscriptEngine:
             style_ctx=style_ctx,
             profile=profile,
             manuscript_model=manuscript_model,
+            style_guide=style_guide,
         )
         # Update chapter_metadata word counts for any retried chapters
         for chapter_num, new_content in retry_fixes.items():
@@ -158,6 +190,7 @@ class ManuscriptEngine:
                         language=lang,
                         profile=profile,
                         quality_level=getattr(self, '_quality_level', 'fast'),
+                        style_guide=style_guide,
                     )
                     editions[lang] = edition_result
                 except Exception as e:
@@ -176,6 +209,7 @@ class ManuscriptEngine:
         profile,
         manuscript_model: str | None,
         max_retries: int | None = None,
+        style_guide: "StyleGuide | None" = None,
     ) -> dict[int, str]:
         """Re-generate chapters that are below the minimum word count. Returns {chapter_num: new_content}."""
         cfg = get_config()
@@ -203,6 +237,7 @@ class ManuscriptEngine:
                     style_ctx=style_ctx,
                     profile=profile,
                     manuscript_model=manuscript_model,
+                    style_guide=style_guide,
                 )
                 if len(retry_content.split()) >= min_words:
                     chapter_file.write_text(retry_content)
@@ -219,6 +254,7 @@ class ManuscriptEngine:
         language: str,
         profile: "PipelineProfile | None" = None,
         quality_level: str = "fast",
+        style_guide: "StyleGuide | None" = None,
     ) -> dict:
         from src.export.file_manager import FileManager
         fm = FileManager(self.projects_dir)
@@ -240,8 +276,10 @@ class ManuscriptEngine:
                 language=language,
                 profile=profile,
                 style_ctx=style_ctx,
+                style_guide=style_guide,
             )
             style_ctx.previous_chapter_ending = chapter_content[-400:]
+            style_ctx.save(edition_dir / "style_context.json")
             chapter_file = chapters_dir / f"{i}.md"
             chapter_file.write_text(chapter_content)
             manuscript_parts.append(f"\n\n## {chapter.get('title', f'Chapter {i}')}\n\n{chapter_content}")
@@ -265,6 +303,7 @@ class ManuscriptEngine:
         style_ctx: StyleContext | None = None,
         profile: "PipelineProfile | None" = None,
         manuscript_model: str | None = None,
+        style_guide: "StyleGuide | None" = None,
     ) -> str:
         title = chapter.get("title", "")
         summary = chapter.get("summary", "")
@@ -279,6 +318,11 @@ class ManuscriptEngine:
             if profile and getattr(profile, 'is_fiction', False) else ""
         )
 
+        style_guide_block = ""
+        if style_guide is not None:
+            tier = get_config().model_capability_tier
+            style_guide_block = f"\n\n{style_guide.to_system_prompt_block(tier=tier)}"
+
         import os
         # Use caller-supplied model; fall back to env var, then hardcoded default.
         _default_model = os.getenv("EBOOK_MANUSCRIPT_MODEL", get_config().default_model)
@@ -286,25 +330,35 @@ class ManuscriptEngine:
         base_system = (
             f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
             f"Chapter {chapter_num}/{total_chapters}: {title}\nSummary: {summary}\n"
-            f"{lang_instr}{style_block}{fiction_block}\n"
+            f"{lang_instr}{style_block}{fiction_block}{style_guide_block}\n"
             "Do NOT repeat the section heading in the body text. Write in full paragraphs."
         )
 
         parts: list[str] = []
 
-        # 1. Hook + introduction
+        # 1. Hook + introduction (rotate hook type by chapter number)
+        hook_types = {
+            0: "a micro-anecdote (2-4 sentences placing a specific person in a concrete moment)",
+            1: "a counterintuitive claim that challenges conventional wisdom",
+            2: "a problem statement that makes the reader feel directly understood",
+        }
+        hook_instruction = hook_types[(chapter_num - 1) % 3]
+
         intro_target = max(300, chapter.get("estimated_word_count", 2000) * 0.15)
         intro_tokens = self.token_calibrator.calibrated_tokens("intro", int(intro_target))
         intro_model = manuscript_model or self.model_tracker.best_model("manuscript_intro", default=_default_model)
         _t0 = time.time()
+        intro_prompt = (
+            f"Write the opening for chapter '{title}'.\n"
+            f"Hook type for this chapter: {hook_instruction}\n"
+            "Include:\n"
+            "- Hook paragraph using the specified hook type (NO heading, never start with 'In today's world' or 'As we explore')\n"
+            "- Chapter promise: one sentence starting with 'By the end of this chapter, you'll...'\n"
+            "- Introduction paragraph (what this chapter covers)\n"
+            "Do NOT include the chapter title. Start directly with the hook."
+        )
         intro = self.ai_client.generate_text(
-            prompt=(
-                f"Write the opening for chapter '{title}'.\n"
-                "Include:\n"
-                "- Hook paragraph (question, surprising fact, or anecdote — NO heading)\n"
-                "- Introduction paragraph (what this chapter covers)\n"
-                "Do NOT include the chapter title. Start directly with the hook."
-            ),
+            prompt=intro_prompt,
             system_prompt=base_system,
             model=intro_model,
             max_tokens=intro_tokens,
@@ -322,10 +376,26 @@ class ManuscriptEngine:
         sub_tokens = self.token_calibrator.calibrated_tokens("subchapter", int(sub_target))
         sub_model = manuscript_model or self.model_tracker.best_model("manuscript_subchapter", default=_default_model)
         for sub in subchapters:
+            if isinstance(sub, dict):
+                sub_title = sub.get("title", str(sub))
+                sub_summary = sub.get("summary", "")
+            else:
+                sub_title = str(sub)
+                sub_summary = ""
+
+            context = f"\nContext for this section: {sub_summary}" if sub_summary else ""
+
+            terms_block = ""
+            if style_ctx and style_ctx.established_terminology:
+                terms = "; ".join(f"{k}: {v}" for k, v in list(style_ctx.established_terminology.items())[:5])
+                terms_block = f"\nMaintain these established terms: {terms}"
+
             _t0 = time.time()
             section = self.ai_client.generate_text(
                 prompt=(
-                    f"Write the section '{sub}' for chapter '{title}'.\n"
+                    f"Write the section '{sub_title}' for chapter '{title}'.\n"
+                    f"{context}\n"
+                    f"{terms_block}\n"
                     "Write 3-5 substantial paragraphs covering the topic in depth.\n"
                     "Be specific, practical, and engaging. Do NOT include a heading — start directly with prose."
                 ),
@@ -344,30 +414,112 @@ class ManuscriptEngine:
                 line for i, line in enumerate(section.strip().splitlines())
                 if not (i == 0 and line.startswith("#"))
             )
-            parts.append(f"\n\n### {sub}\n\n{section_body.strip()}")
+            parts.append(f"\n\n### {sub_title}\n\n{section_body.strip()}")
 
-        # 3. Summary + transition
+        # 3. Summary + transition (structured enrichment when enabled)
         outro_target = max(150, chapter.get("estimated_word_count", 2000) * 0.10)
         outro_tokens = self.token_calibrator.calibrated_tokens("outro", int(outro_target))
         outro_model = manuscript_model or self.model_tracker.best_model("manuscript_outro", default=_default_model)
-        _t0 = time.time()
-        outro = self.ai_client.generate_text(
-            prompt=(
-                f"Write the closing for chapter '{title}'.\n"
-                "Include:\n"
-                "- Summary paragraph: 3-4 key takeaways from this chapter\n"
-                "- Transition sentence: one sentence bridging to the next chapter"
-            ),
-            system_prompt=base_system,
-            model=outro_model,
-            max_tokens=outro_tokens,
-            temperature=0.7,
-        )
-        _latency = (time.time() - _t0) * 1000
-        _success = len(outro.strip()) > 50
-        _tokens = int(len(outro.split()) * 1.3)
-        self.model_tracker.record(outro_model, "manuscript_outro", _success, _tokens, _latency)
-        self.token_calibrator.record("outro", outro_tokens, len(outro.split()))
-        parts.append(f"\n\n{outro.strip()}")
+
+        if get_config().chapter_enrichment_enabled:
+            enrichment_schema = {
+                "chapter_summary_bullets": list,
+                "callout_insight": str,
+                "case_study": {"name": str, "conflict": str, "resolution": str},
+                "action_steps": list,
+                "bridge_sentence": str,
+            }
+            try:
+                enrichment = self.ai_client.generate_structured(
+                    prompt=(
+                        f"Generate the closing elements for chapter '{title}'.\n"
+                        f"Chapter context: {summary}\n"
+                        "Provide:\n"
+                        "- chapter_summary_bullets: list of 3-5 key takeaways (strings)\n"
+                        "- callout_insight: one powerful key insight (1-2 sentences)\n"
+                        "- case_study: a named composite person with conflict and resolution arc\n"
+                        "- action_steps: list of 3 numbered actionable steps (imperative verbs)\n"
+                        "- bridge_sentence: one sentence transitioning to the next chapter"
+                    ),
+                    system_prompt=base_system,
+                    response_schema=enrichment_schema,
+                    model=outro_model,
+                    max_tokens=outro_tokens,
+                    temperature=0.7,
+                )
+
+                if not isinstance(enrichment, dict):
+                    raise ValueError("enrichment result is not a dict")
+
+                # Render enrichment into markdown
+                bullets = enrichment.get("chapter_summary_bullets", [])
+                callout = enrichment.get("callout_insight", "")
+                case_study = enrichment.get("case_study", {})
+                action_steps = enrichment.get("action_steps", [])
+                bridge = enrichment.get("bridge_sentence", "")
+
+                enrichment_text = []
+                if callout:
+                    enrichment_text.append(f"\n\n> **Key Insight:** {callout}")
+                if case_study and case_study.get("name"):
+                    enrichment_text.append(
+                        f"\n\n**Example: {case_study['name']}'s Story** — "
+                        f"{case_study.get('conflict', '')} {case_study.get('resolution', '')}"
+                    )
+                if bullets:
+                    enrichment_text.append("\n\n### Chapter Summary\n\n" + "\n".join(f"- {b}" for b in bullets))
+                if action_steps:
+                    steps = "\n".join(f"{i+1}. {s}" for i, s in enumerate(action_steps))
+                    enrichment_text.append(f"\n\n### Action Steps\n\n{steps}")
+                if bridge:
+                    enrichment_text.append(f"\n\n{bridge}")
+
+                parts.append("".join(enrichment_text))
+
+            except Exception as e:
+                # Fallback to plain outro on enrichment failure
+                from src.logger import get_logger
+                logger = get_logger(__name__)
+                logger.warning("Chapter enrichment failed, using plain outro", chapter=title, error=str(e))
+                _t0 = time.time()
+                outro = self.ai_client.generate_text(
+                    prompt=(
+                        f"Write the closing for chapter '{title}'.\n"
+                        "Include:\n"
+                        "- Summary paragraph: 3-4 key takeaways from this chapter\n"
+                        "- Transition sentence: one sentence bridging to the next chapter"
+                    ),
+                    system_prompt=base_system,
+                    model=outro_model,
+                    max_tokens=outro_tokens,
+                    temperature=0.7,
+                )
+                _latency = (time.time() - _t0) * 1000
+                _success = len(outro.strip()) > 50
+                _tokens = int(len(outro.split()) * 1.3)
+                self.model_tracker.record(outro_model, "manuscript_outro", _success, _tokens, _latency)
+                self.token_calibrator.record("outro", outro_tokens, len(outro.split()))
+                parts.append(f"\n\n{outro.strip()}")
+        else:
+            # chapter_enrichment_enabled = False: use original outro
+            _t0 = time.time()
+            outro = self.ai_client.generate_text(
+                prompt=(
+                    f"Write the closing for chapter '{title}'.\n"
+                    "Include:\n"
+                    "- Summary paragraph: 3-4 key takeaways from this chapter\n"
+                    "- Transition sentence: one sentence bridging to the next chapter"
+                ),
+                system_prompt=base_system,
+                model=outro_model,
+                max_tokens=outro_tokens,
+                temperature=0.7,
+            )
+            _latency = (time.time() - _t0) * 1000
+            _success = len(outro.strip()) > 50
+            _tokens = int(len(outro.split()) * 1.3)
+            self.model_tracker.record(outro_model, "manuscript_outro", _success, _tokens, _latency)
+            self.token_calibrator.record("outro", outro_tokens, len(outro.split()))
+            parts.append(f"\n\n{outro.strip()}")
 
         return "\n\n".join(parts)

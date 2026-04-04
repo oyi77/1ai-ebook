@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import re
 import time
 from typing import Any, Literal
@@ -63,8 +64,10 @@ class OmnirouteClient:
             )
             self.api_key = api_key or os.getenv("CUSTOM_AI_API_KEY", "")
 
-        self.max_retries = max_retries
-        self.timeout = timeout
+        from src.config import get_config
+        cfg = get_config()
+        self.max_retries = max_retries if max_retries != 3 else cfg.ai_max_retries
+        self.timeout = timeout if timeout != 300 else cfg.ai_request_timeout
         self.client = OpenAI(
             base_url=self.base_url, api_key=self.api_key, timeout=self.timeout
         )
@@ -112,7 +115,10 @@ class OmnirouteClient:
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
                 if attempt == self.max_retries - 1:
                     raise
-                wait_time = (2**attempt) + 0.1
+                wait_time = (2**attempt) + random.uniform(0, 1)
+                # Rate limit: longer backoff
+                if "429" in err_str:
+                    wait_time *= 2
                 time.sleep(wait_time)
         return ""
 
@@ -170,7 +176,10 @@ class OmnirouteClient:
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
                 if attempt == self.max_retries - 1:
                     raise
-                wait_time = (2**attempt) + 0.1
+                wait_time = (2**attempt) + random.uniform(0, 1)
+                # Rate limit: longer backoff
+                if "429" in err_str:
+                    wait_time *= 2
                 time.sleep(wait_time)
         return {}
 

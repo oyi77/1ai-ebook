@@ -8,6 +8,9 @@ from PIL import Image, ImageDraw, ImageFont
 
 from src.ai_client import OmnirouteClient
 from src.config import get_config
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -33,7 +36,8 @@ class CoverGenerator:
     ) -> dict:
         try:
             prompt = self.generate_prompt(title, topic, tone, product_mode)
-        except Exception:
+        except Exception as e:
+            logger.warning("Cover prompt generation failed, using fallback", error=str(e))
             prompt = f"A professional ebook cover for '{title}'. Clean, modern design."
 
         project_dir = self.projects_dir / str(project_id) / "cover"
@@ -42,15 +46,19 @@ class CoverGenerator:
         with open(project_dir / "prompt.txt", "w") as f:
             f.write(prompt)
 
-        # Try AI image generation; fail-fast to Pillow on any error
+        # Try AI image generation; fall back to HTML cover, then Pillow
         image_method = "pillow"
         try:
             image_bytes = self.ai_client.generate_image(prompt)
             with open(project_dir / "cover.png", "wb") as f:
                 f.write(image_bytes)
             image_method = "ai"
-        except (RuntimeError, Exception):
-            self._generate_cover_image(project_dir, title, product_mode)
+        except (RuntimeError, Exception) as e:
+            logger.warning("AI image generation failed, falling back to HTML/Pillow cover", error=str(e))
+            html_ok = self._generate_html_cover(project_dir, title, topic, tone, product_mode)
+            if not html_ok:
+                self._generate_cover_image(project_dir, title, product_mode)
+            image_method = "html" if html_ok else "pillow"
 
         with open(project_dir / "brief.json", "w") as f:
             json.dump(
@@ -97,6 +105,65 @@ Return only the description, no explanations."""
         )
 
         return response
+
+    def _generate_html_cover(
+        self,
+        project_dir: Path,
+        title: str,
+        topic: str,
+        tone: str,
+        product_mode: str,
+    ) -> bool:
+        system_prompt = (
+            "You are an expert web designer. Generate a stunning, professional ebook cover as a "
+            "single self-contained HTML file with inline CSS only (no external dependencies, no CDN links). "
+            "The cover must be exactly 1200x1600px, with the title prominently displayed using modern design: "
+            "gradients, beautiful typography, and strong visual hierarchy. "
+            "Return ONLY the raw HTML string, no explanation, no markdown, no code fences."
+        )
+        prompt = (
+            f"Create an ebook cover for:\nTitle: {title}\nTopic: {topic}\nTone: {tone}\nStyle: {product_mode}"
+        )
+        try:
+            html = self.ai_client.generate_text(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                max_tokens=2000,
+                temperature=0.7,
+            )
+        except Exception as e:
+            logger.warning("HTML cover AI generation failed", error=str(e))
+            return False
+
+        html_path = project_dir / "cover.html"
+        with open(html_path, "w") as f:
+            f.write(html)
+
+        # Try playwright first
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                browser = p.chromium.launch()
+                page = browser.new_page(viewport={"width": 1200, "height": 1600})
+                page.set_content(html)
+                page.screenshot(
+                    path=str(project_dir / "cover.png"),
+                    clip={"x": 0, "y": 0, "width": 1200, "height": 1600},
+                )
+                browser.close()
+            return True
+        except Exception as e:
+            logger.info("Playwright cover render failed, trying weasyprint", error=str(e))
+
+        # Try weasyprint as fallback
+        try:
+            import weasyprint
+            weasyprint.HTML(string=html).write_png(str(project_dir / "cover.png"))
+            return True
+        except Exception as e:
+            logger.info("Weasyprint cover render failed", error=str(e))
+
+        return False
 
     def _find_font(self, name: str, size: int):
         candidates = [

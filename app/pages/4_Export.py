@@ -118,6 +118,24 @@ for project in completed:
                         key=f"dl_epub_{project['id']}",
                     )
 
+        qa_report_path = project_dir / "qa_report.json"
+        if qa_report_path.exists():
+            qa_report = json.loads(qa_report_path.read_text())
+            scores = qa_report.get("scores", {})
+
+            st.subheader("Quality Report")
+            cols = st.columns(len(scores) or 1)
+            for i, (key, val) in enumerate(scores.items()):
+                with cols[i % len(cols)]:
+                    label = key.replace("_", " ").title()
+                    color = "🟢" if val >= 0.8 else ("🟡" if val >= 0.6 else "🔴")
+                    st.metric(label=f"{color} {label}", value=f"{val:.0%}")
+
+            if not qa_report.get("passed"):
+                st.warning("QA issues found:")
+                for issue in qa_report.get("issues", []):
+                    st.write(f"• {issue}")
+
         st.markdown("---")
         st.markdown("**Project Files:**")
         if project_dir.exists():

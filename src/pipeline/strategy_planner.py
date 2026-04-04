@@ -6,9 +6,13 @@ from typing import TYPE_CHECKING
 
 from src.ai_client import OmnirouteClient
 from src.i18n.languages import language_instruction
+from src.logger import get_logger
+from src.pipeline.style_guide import StyleGuide
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
+
+logger = get_logger(__name__)
 
 
 class StrategyPlanner:
@@ -54,7 +58,52 @@ class StrategyPlanner:
         )
 
         self._save_strategy(project_brief["id"], strategy)
-        return strategy
+
+        style_guide = self._generate_style_guide(strategy)
+        self._save_style_guide(project_brief["id"], style_guide)
+
+        return {**strategy, "style_guide": style_guide}
+
+    def _generate_style_guide(self, strategy: dict) -> StyleGuide:
+        audience = strategy.get("audience", "")
+        voice_anchor = f"A professional who wants practical, actionable guidance" if not audience else audience
+
+        raw_tone = strategy.get("tone", "conversational").lower()
+        tone_map = {
+            "conversational": ["direct", "warm", "clear", "practical"],
+            "professional": ["authoritative", "precise", "credible", "confident"],
+            "academic": ["rigorous", "thorough", "evidence-based"],
+        }
+        tone_adjectives = tone_map.get(raw_tone, ["engaging", "clear", "accessible"])
+
+        gold_standard_paragraph = ""
+        topic = strategy.get("promise", strategy.get("goal", "this topic"))
+        try:
+            result = self.ai_client.generate_text(
+                prompt=f"Write a single 3-sentence paragraph in the {raw_tone} voice about {topic}. This is the gold standard voice for the entire ebook. No headings. Just prose.",
+                system_prompt="You are an expert writing coach. Write exactly 3 sentences of prose with no headings or lists.",
+            )
+            if isinstance(result, str):
+                gold_standard_paragraph = result
+        except Exception as exc:
+            logger.info("Could not generate gold standard paragraph", error=str(exc))
+
+        return StyleGuide(
+            voice_anchor=voice_anchor,
+            tone_adjectives=tone_adjectives,
+            gold_standard_paragraph=gold_standard_paragraph,
+        )
+
+    def _save_style_guide(self, project_id: int, style_guide: StyleGuide) -> None:
+        project_dir = self.projects_dir / str(project_id)
+        project_dir.mkdir(parents=True, exist_ok=True)
+        style_guide_file = project_dir / "style_guide.json"
+        import dataclasses
+        data = dataclasses.asdict(style_guide)
+        # tuple is not JSON-serializable; convert to list
+        data["sentence_length_range"] = list(data["sentence_length_range"])
+        with open(style_guide_file, "w") as f:
+            json.dump(data, f, indent=2)
 
     def _build_system_prompt(self, product_mode: str, target_language: str = "en") -> str:
         mode_context = {

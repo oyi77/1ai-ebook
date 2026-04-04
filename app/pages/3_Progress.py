@@ -16,6 +16,7 @@ st.markdown("Track and resume your ebook generation jobs — multiple at once!")
 
 from src.db.repository import ProjectRepository
 from src.pipeline.orchestrator import PipelineOrchestrator
+from src.pipeline.error_classifier import ErrorClassifier
 from src.jobs.tracker import (
     get_job_status,
     get_all_active_jobs,
@@ -102,7 +103,8 @@ for project in projects:
             elif display_status == "completed":
                 st.success("✅ Complete!")
             elif display_status == "failed":
-                st.error(f"❌ {job.get('error', 'Unknown error')}")
+                raw_error = job.get("error") or job.get("message", "Unknown error")
+                st.error(f"❌ {ErrorClassifier.classify_str(raw_error)}")
             elif display_status == "generating":
                 orchestrator = PipelineOrchestrator(
                     db_path=str(db_path), projects_dir="projects"

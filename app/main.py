@@ -5,6 +5,9 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent))
 sys.path.insert(0, str(Path(__file__).parent))
 
+from src.logger import setup_logging
+setup_logging()
+
 st.set_page_config(page_title="Ebook Generator", page_icon="📚", layout="wide")
 
 from utils.mobile_css import inject_mobile_css

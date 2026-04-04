@@ -1,7 +1,10 @@
 import json
 from pathlib import Path
 
+from src.logger import get_logger
 from src.ai_client import OmnirouteClient
+
+logger = get_logger(__name__)
 from src.pipeline.pipeline_profile import get_profile
 from src.pipeline.strategy_planner import StrategyPlanner
 from src.pipeline.outline_generator import OutlineGenerator
@@ -28,6 +31,7 @@ class PipelineOrchestrator:
         project_dir = Path(self.projects_dir) / str(project_id)
         progress = {
             "strategy": (project_dir / "strategy.json").exists(),
+            "style_guide": (project_dir / "style_guide.json").exists(),
             "outline": (project_dir / "outline.json").exists(),
             "manuscript": (project_dir / "manuscript.md").exists(),
             "cover": (project_dir / "cover" / "cover.png").exists(),
@@ -68,6 +72,11 @@ class PipelineOrchestrator:
             with open(strategy_file) as f:
                 data["strategy"] = json.load(f)
 
+        style_guide_file = project_dir / "style_guide.json"
+        if style_guide_file.exists():
+            with open(style_guide_file) as f:
+                data["style_guide"] = json.load(f)
+
         outline_file = project_dir / "outline.json"
         if outline_file.exists():
             with open(outline_file) as f:
@@ -75,7 +84,7 @@ class PipelineOrchestrator:
 
         return data
 
-    def run_full_pipeline(self, project_id: int, on_progress=None, manuscript_model: str | None = None) -> dict:
+    def run_full_pipeline(self, project_id: int, on_progress=None, manuscript_model: str | None = None, quality_level: str = "fast") -> dict:
         project = self.repo.get_project(project_id)
         if not project:
             raise ValueError(f"Project {project_id} not found")
@@ -87,16 +96,29 @@ class PipelineOrchestrator:
         (project_dir / "cover").mkdir(exist_ok=True)
 
         self.repo.update_project_status(project_id, "generating")
+        self._fire_webhook_event("ebook.generation.started", {"project_id": project_id})
 
         try:
-            return self._run_pipeline(project_id, project, project_dir, on_progress, manuscript_model)
+            return self._run_pipeline(project_id, project, project_dir, on_progress, manuscript_model, quality_level)
         except Exception as exc:
             self.repo.update_project_status(project_id, "failed")
             if on_progress:
                 on_progress(0, f"Pipeline failed: {exc}")
             raise
 
-    def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress, manuscript_model: str | None = None) -> dict:
+    def _fire_webhook_event(self, event: str, payload: dict) -> None:
+        """Fire event to all configured integrations — non-blocking."""
+        try:
+            from src.integrations.manager import IntegrationManager
+            mgr = IntegrationManager()
+            for integration in mgr.list_integrations():
+                integ_id = integration.get("id") or integration.get("name", "")
+                if integ_id:
+                    mgr.invoke_webhook(integ_id, event, payload)
+        except Exception as e:
+            logger.info("Webhook event skipped", event=event, error=str(e))
+
+    def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress, manuscript_model: str | None = None, quality_level: str = "fast") -> dict:
         # Check if we can resume
         progress = self._check_progress(project_id)
         existing = self._load_existing_data(project_id)
@@ -117,9 +139,13 @@ class PipelineOrchestrator:
             strategy_planner = StrategyPlanner(
                 self.ai_client, projects_dir=self.projects_dir
             )
-            strategy = strategy_planner.generate(project_brief, profile=profile)
+            result = strategy_planner.generate(project_brief, profile=profile)
+            style_guide = result.pop("style_guide", None)
+            strategy = result
+            self.repo.set_metadata(project_id, "stage:strategy", "completed")
         else:
             strategy = existing.get("strategy", {})
+            style_guide = existing.get("style_guide", None)
             if on_progress:
                 on_progress(5, "Strategy already exists — skipping...")
 
@@ -136,13 +162,15 @@ class PipelineOrchestrator:
                 chapter_count=project["chapter_count"],
                 profile=profile,
             )
+            self.repo.set_metadata(project_id, "stage:outline", "completed")
         else:
             outline = existing.get("outline", {})
             if on_progress:
                 on_progress(20, "Outline already exists — skipping...")
 
         # Manuscript
-        if not progress["manuscript"]:
+        style_ctx_path = project_dir / "style_context.json"
+        if not progress["manuscript"] and self.repo.get_metadata(project_id, "stage:manuscript") != "completed":
             if on_progress:
                 on_progress(35, "Writing manuscript...")
             manuscript_engine = ManuscriptEngine(
@@ -154,6 +182,12 @@ class PipelineOrchestrator:
                     scaled = 35 + int(progress_pct * 0.5)
                     on_progress(scaled, step)
 
+            from src.pipeline.style_context import StyleContext
+            style_ctx = StyleContext.load_or_default(
+                style_ctx_path,
+                tone=strategy.get("tone", "conversational"),
+            ) if style_ctx_path.exists() else None
+
             manuscript_engine.generate(
                 project_id=project_id,
                 outline=outline,
@@ -162,7 +196,10 @@ class PipelineOrchestrator:
                 profile=profile,
                 language=project_brief.get("target_language", "en"),
                 manuscript_model=manuscript_model,
+                quality_level=quality_level,
+                style_ctx=style_ctx,
             )
+            self.repo.set_metadata(project_id, "stage:manuscript", "completed")
         else:
             completed = progress["completed_chapters"]
             total = progress["total_chapters"]
@@ -187,6 +224,7 @@ class PipelineOrchestrator:
                 product_mode=project["product_mode"],
                 profile=profile,
             )
+            self.repo.set_metadata(project_id, "stage:cover", "completed")
         else:
             if on_progress:
                 on_progress(85, "Cover already exists — skipping...")
@@ -215,6 +253,8 @@ class PipelineOrchestrator:
 
             report = qa_engine.run(manuscript, outline, strategy, profile=profile)
             qa_engine.save_report(project_id, report, self.projects_dir)
+            self.repo.set_metadata(project_id, "stage:qa", "completed")
+            self._fire_webhook_event("ebook.generation.completed", {"project_id": project_id})
         else:
             if on_progress:
                 on_progress(92, "QA already completed — skipping...")
@@ -228,6 +268,8 @@ class PipelineOrchestrator:
                 projects_dir=self.projects_dir,
             )
             result = export_orchestrator.export(project_id)
+            self.repo.set_metadata(project_id, "stage:export", "completed")
+            self._fire_webhook_event("ebook.export.ready", {"project_id": project_id})
         else:
             if on_progress:
                 on_progress(95, "Exports already exist — skipping...")
@@ -251,8 +293,8 @@ class PipelineOrchestrator:
                 outline=outline,
             )
             result["marketing_kit"] = marketing_kit
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Marketing kit generation failed", error=str(e))
 
         self.repo.update_project_status(project_id, "completed")
 

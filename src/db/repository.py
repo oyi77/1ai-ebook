@@ -103,6 +103,23 @@ class ProjectRepository:
             proj = cursor.fetchone()
             return [proj["target_language"]] if proj else ["en"]
 
+    def set_metadata(self, project_id: int, key: str, value: str) -> None:
+        with self.db.get_connection() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO project_metadata (project_id, key, value) VALUES (?, ?, ?)",
+                (project_id, key, value),
+            )
+            conn.commit()
+
+    def get_metadata(self, project_id: int, key: str) -> str | None:
+        with self.db.get_connection() as conn:
+            cursor = conn.execute(
+                "SELECT value FROM project_metadata WHERE project_id = ? AND key = ?",
+                (project_id, key),
+            )
+            row = cursor.fetchone()
+            return row[0] if row else None
+
     def delete_project(self, project_id: int) -> None:
         with self.db.get_connection() as conn:
             conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))

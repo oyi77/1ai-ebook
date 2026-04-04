@@ -18,6 +18,16 @@ from pydantic import BaseModel
 from src.db.database import DatabaseManager
 from src.db.repository import ProjectRepository
 from src.db.schema import create_tables
+from src.pipeline.error_classifier import ErrorClassifier
+
+try:
+    from src.logger import get_logger, setup_logging
+    setup_logging()
+    logger = get_logger(__name__)
+except ImportError:
+    import logging
+    logging.basicConfig()
+    logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Config
@@ -54,7 +64,8 @@ def _check_admin(admin_session: str | None) -> bool:
     try:
         val, sig = admin_session.rsplit(".", 1)
         return hmac.compare_digest(sig, _sign(val))
-    except Exception:
+    except Exception as e:
+        logger.warning("Admin session check failed", error=str(e))
         return False
 
 
@@ -369,7 +380,7 @@ def generate_project(
             _generation_progress[project_id] = {
                 "status": "failed",
                 "progress": 0,
-                "message": str(exc),
+                "message": ErrorClassifier.classify(exc),
             }
 
     thread = threading.Thread(target=_run, daemon=True)
@@ -389,7 +400,10 @@ def get_status(project_id: int):
         project_id,
         {"status": project["status"], "progress": 0, "message": ""},
     )
-    return {"project_id": project_id, "db_status": project["status"], **progress}
+    result = {"project_id": project_id, "db_status": project["status"], **progress}
+    if result.get("status") == "failed" and result.get("message"):
+        result["message"] = ErrorClassifier.classify_str(result["message"])
+    return result
 
 
 @app.get("/api/projects/{project_id}/export")

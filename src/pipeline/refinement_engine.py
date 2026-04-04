@@ -1,6 +1,10 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from src.logger import get_logger
+
+logger = get_logger(__name__)
+
 if TYPE_CHECKING:
     from src.ai_client import OmnirouteClient
 
@@ -36,5 +40,6 @@ class RefinementEngine:
                 max_tokens=3000,
                 temperature=0.3,
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("Refinement failed, returning original content", error=str(e))
             return content

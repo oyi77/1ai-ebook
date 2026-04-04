@@ -6,6 +6,9 @@ from src.db.repository import ProjectRepository
 from src.export.docx_generator import DocxGenerator
 from src.export.epub_generator import EpubGenerator
 from src.export.pdf_converter import PdfConverter
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class ExportOrchestrator:
@@ -23,11 +26,17 @@ class ExportOrchestrator:
         exports_dir = project_dir / "exports"
         exports_dir.mkdir(parents=True, exist_ok=True)
 
-        self._generate_docx(project_id, project_dir)
-        self._generate_pdf(project_dir)
-        self._generate_epub(project_id, project_dir)
+        docx_result = self._generate_docx(project_id, project_dir)
+        pdf_result = self._generate_pdf(project_dir)
+        epub_result = self._generate_epub(project_id, project_dir)
 
-        self._create_manifest(project_id, exports_dir)
+        format_results = {
+            "docx": docx_result,
+            "pdf": pdf_result,
+            "epub": epub_result,
+        }
+
+        self._create_manifest(project_id, exports_dir, format_results)
 
         self.repo.update_project_status(project_id, "completed")
 
@@ -41,20 +50,26 @@ class ExportOrchestrator:
             },
         }
 
-    def _generate_docx(self, project_id: int, project_dir: Path) -> None:
-        generator = DocxGenerator(projects_dir=project_dir.parent)
-        title = "Ebook"
+    def _generate_docx(self, project_id: int, project_dir: Path) -> dict:
+        try:
+            generator = DocxGenerator(projects_dir=project_dir.parent)
+            title = "Ebook"
 
-        outline_file = project_dir / "outline.json"
-        if outline_file.exists():
-            with open(outline_file) as f:
-                outline = json.load(f)
-                title = outline.get("best_title", "Ebook")
+            outline_file = project_dir / "outline.json"
+            if outline_file.exists():
+                with open(outline_file) as f:
+                    outline = json.load(f)
+                    title = outline.get("best_title", "Ebook")
 
-        result = generator.generate(project_id, title=title)
-        return result
+            result = generator.generate(project_id, title=title)
+            docx_path = project_dir / "exports" / "ebook.docx"
+            path_str = str(result) if result else (str(docx_path) if docx_path.exists() else None)
+            return {"status": "success", "path": path_str, "error": None}
+        except Exception as e:
+            logger.warning("DOCX generation failed", error=str(e))
+            return {"status": "failed", "path": None, "error": str(e)}
 
-    def _generate_epub(self, project_id: int, project_dir: Path) -> None:
+    def _generate_epub(self, project_id: int, project_dir: Path) -> dict:
         try:
             title = "Ebook"
             outline_file = project_dir / "outline.json"
@@ -64,39 +79,50 @@ class ExportOrchestrator:
                     title = outline.get("best_title", "Ebook")
 
             generator = EpubGenerator(projects_dir=project_dir.parent)
-            generator.generate(project_id, title=title)
-        except Exception:
-            pass
+            epub_path = generator.generate(project_id, title=title)
+            path_str = str(epub_path) if epub_path else str(project_dir / "exports" / "ebook.epub")
+            return {"status": "success", "path": path_str, "error": None}
+        except Exception as e:
+            logger.warning("EPUB generation failed", error=str(e))
+            return {"status": "failed", "path": None, "error": str(e)}
 
-    def _generate_pdf(self, project_dir: Path) -> None:
+    def _generate_pdf(self, project_dir: Path) -> dict:
         converter = PdfConverter()
         docx_file = project_dir / "exports" / "ebook.docx"
 
         if not docx_file.exists():
-            raise FileNotFoundError(f"DOCX file not found: {docx_file}")
+            return {"status": "skipped", "path": None, "error": "DOCX file not found"}
 
         try:
             converter.convert(docx_file)
+            pdf_path = project_dir / "exports" / "ebook.pdf"
+            path_str = str(pdf_path) if pdf_path.exists() else None
+            return {"status": "success", "path": path_str, "error": None}
         except RuntimeError as e:
             if "LibreOffice not found" in str(e):
-                pass
-            else:
-                raise
+                logger.info("LibreOffice not found, skipping PDF conversion", error=str(e))
+            return {"status": "failed", "path": None, "error": str(e)}
+        except Exception as e:
+            logger.warning("PDF generation failed", error=str(e))
+            return {"status": "failed", "path": None, "error": str(e)}
 
-    def _create_manifest(self, project_id: int, exports_dir: Path) -> None:
+    def _create_manifest(self, project_id: int, exports_dir: Path, format_results: dict | None = None) -> None:
         manifest = {
             "project_id": project_id,
             "generated_at": datetime.now().isoformat(),
-            "files": {},
+            "formats": {},
         }
 
-        for ext in ["docx", "pdf", "epub"]:
-            file_path = exports_dir / f"ebook.{ext}"
-            if file_path.exists():
-                manifest["files"][ext] = {
-                    "path": str(file_path),
-                    "size": file_path.stat().st_size,
-                }
+        for fmt, result in (format_results or {}).items():
+            entry: dict = {"status": result.get("status", "unknown")}
+            if result.get("path"):
+                path = Path(result["path"])
+                entry["path"] = result["path"]
+                if path.exists():
+                    entry["size_bytes"] = path.stat().st_size
+            if result.get("error"):
+                entry["error"] = result["error"]
+            manifest["formats"][fmt] = entry
 
         with open(exports_dir / "manifest.json", "w") as f:
             json.dump(manifest, f, indent=2)

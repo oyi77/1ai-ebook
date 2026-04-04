@@ -1,6 +1,9 @@
 import os
 import requests
 import time
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 OMNIROUTE_BASE_URL = os.getenv("OMNIROUTE_BASE_URL", "http://localhost:20128/v1")
 
@@ -22,6 +25,6 @@ def get_available_models():
             _cached_models = models
             _last_fetch = now
             return models
-    except Exception:
-        pass
+    except Exception as e:
+        logger.info("Failed to fetch available models, using defaults", error=str(e))
     return ["auto/best-chat", "auto/best-fast", "auto/best-reasoning"]

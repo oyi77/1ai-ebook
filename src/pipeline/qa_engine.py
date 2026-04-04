@@ -6,6 +6,9 @@ from typing import TYPE_CHECKING
 
 from src.ai_client import OmnirouteClient
 from src.config import get_config
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -42,6 +45,21 @@ class QAEngine:
             consistency_score = self._check_consistency(manuscript, strategy)
             if consistency_score is not None:
                 scores["consistency"] = consistency_score
+
+        # Prose quality check (per-chapter, English only)
+        language = strategy.get("language", "en") if strategy else "en"
+        prose_scores = []
+        for ch in manuscript.get("chapters", []):
+            content = ch.get("content", "")
+            if content:
+                pq = self._check_prose_quality(content, language)
+                if not pq.get("skipped"):
+                    prose_scores.append(pq["prose_quality"])
+                    if pq["prose_quality"] < 0.8:
+                        issues.append(f"Chapter {ch.get('chapter','?')} prose quality {pq['prose_quality']:.2f} below threshold")
+
+        if prose_scores:
+            scores["prose_quality"] = round(sum(prose_scores) / len(prose_scores), 3)
 
         from src.pipeline.content_safety import ContentSafety
         safety = ContentSafety()
@@ -113,6 +131,69 @@ class QAEngine:
 
         return issues
 
+    def _check_prose_quality(self, chapter_content: str, language: str = "en") -> dict:
+        """Heuristic prose quality check. English-only; returns skipped for other languages."""
+        if language != "en":
+            return {"prose_quality": None, "skipped": True, "reason": f"language={language}"}
+
+        import re
+        import math
+
+        # 1. Banned phrases check
+        banned = [
+            "delve", "it's worth noting", "in conclusion", "as we explore",
+            "in today's fast-paced world", "it is important to note",
+            "furthermore", "moreover", "additionally", "needless to say",
+        ]
+        text_lower = chapter_content.lower()
+        found_banned = [p for p in banned if p in text_lower]
+        banned_penalty = min(len(found_banned) * 0.1, 0.3)  # max 0.3 penalty
+
+        # 2. Sentence length uniformity (stddev of word counts per sentence)
+        sentences = re.split(r'[.!?]+', chapter_content)
+        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+        if len(sentences) >= 3:
+            lengths = [len(s.split()) for s in sentences]
+            mean = sum(lengths) / len(lengths)
+            variance = sum((l - mean) ** 2 for l in lengths) / len(lengths)
+            stddev = math.sqrt(variance)
+            # Good writing has stddev >= 5; below 3 is suspiciously uniform
+            uniformity_penalty = max(0, (5 - stddev) * 0.05) if stddev < 5 else 0
+        else:
+            uniformity_penalty = 0
+
+        # 3. Abstract opener check
+        first_200 = chapter_content[:200].lower()
+        abstract_openers = ["in today's world", "in today's fast", "as we explore", "it is important"]
+        has_abstract_opener = any(op in first_200 for op in abstract_openers)
+        opener_penalty = 0.15 if has_abstract_opener else 0
+
+        # 4. Hedge word density
+        hedge_words = ["may", "might", "could", "perhaps", "possibly", "seemingly", "arguably"]
+        hedge_count = sum(text_lower.count(f" {h} ") for h in hedge_words)
+        hedge_density = hedge_count / max(len(sentences), 1)
+        hedge_penalty = 0.1 if hedge_density > 0.08 else 0
+
+        # 5. Architecture check (action steps + chapter summary)
+        has_action_steps = "### action steps" in text_lower or "## action steps" in text_lower
+        has_summary = "### chapter summary" in text_lower or "## chapter summary" in text_lower or "## summary" in text_lower
+        architecture_penalty = (0 if has_action_steps else 0.1) + (0 if has_summary else 0.1)
+
+        score = max(0.0, 1.0 - banned_penalty - uniformity_penalty - opener_penalty - hedge_penalty - architecture_penalty)
+
+        return {
+            "prose_quality": round(score, 3),
+            "skipped": False,
+            "details": {
+                "banned_phrases_found": found_banned,
+                "sentence_stddev": round(stddev if len(sentences) >= 3 else 0, 2),
+                "has_abstract_opener": has_abstract_opener,
+                "hedge_density": round(hedge_density, 3),
+                "has_action_steps": has_action_steps,
+                "has_summary": has_summary,
+            }
+        }
+
     def _check_consistency(self, manuscript: dict, strategy: dict) -> float | None:
         if self.quality_level != "thorough" or self.ai_client is None:
             return None
@@ -135,7 +216,8 @@ class QAEngine:
             )
             score = float(result.get("score", 0.0))
             return max(0.0, min(1.0, score))
-        except Exception:
+        except Exception as e:
+            logger.warning("Consistency check failed", error=str(e))
             return None
 
     def save_report(

@@ -20,6 +20,7 @@ st.markdown("Fill in your ebook details and let AI do the writing")
 
 from src.pipeline.intake import ProjectIntake
 from src.pipeline.orchestrator import PipelineOrchestrator
+from src.pipeline.error_classifier import ErrorClassifier
 from src.db.schema import create_tables
 from src.i18n.languages import SUPPORTED_LANGUAGES, is_rtl
 
@@ -190,8 +191,9 @@ with st.form("ebook_form"):
 
             except Exception as e:
                 st.session_state.generating = False
-                st.session_state.generation_error = str(e)
-                st.error(f"❌ Generation failed: {e}")
+                friendly = ErrorClassifier.classify(e)
+                st.session_state.generation_error = friendly
+                st.error(f"❌ {friendly}")
                 st.info("You can retry by submitting the form again.")
 
 # Handle resume from Progress page
@@ -248,8 +250,9 @@ if resume_id and not st.session_state.generating:
 
         except Exception as e:
             st.session_state.generating = False
-            st.session_state.generation_error = str(e)
-            st.error(f"❌ Generation failed: {e}")
+            friendly = ErrorClassifier.classify(e)
+            st.session_state.generation_error = friendly
+            st.error(f"❌ {friendly}")
             st.info("You can retry by clicking Resume again.")
 
 if st.session_state.generated_project_id and not st.session_state.generating:

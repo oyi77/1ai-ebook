@@ -12,6 +12,9 @@ import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -62,8 +65,8 @@ def search_ebooks(
 
     try:
         results = _search_google_books(query, language, max_results, timeout)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning("Google Books API call failed", error=str(e))
 
     if len(results) < max_results:
         needed = max_results - len(results)
@@ -77,8 +80,8 @@ def search_ebooks(
                     existing_titles.add(ref.title.lower())
                     if len(results) >= max_results:
                         break
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Open Library API call failed", error=str(e))
 
     return results[:max_results]
 

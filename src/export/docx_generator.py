@@ -3,6 +3,9 @@ from pathlib import Path
 from docx import Document
 from docx.shared import Inches
 from src.i18n.languages import is_rtl
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 
 class DocxGenerator:
@@ -52,8 +55,8 @@ class DocxGenerator:
         if cover_file.exists():
             try:
                 doc.add_picture(str(cover_file), width=Inches(6))
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to add cover picture to DOCX", error=str(e))
 
         doc.add_heading(title, 0)
         if subtitle:
@@ -91,20 +94,18 @@ class DocxGenerator:
         content = manuscript_file.read_text()
 
         lines = content.split("\n")
-        in_chapter = False
+        chapter_index = 0
 
         for line in lines:
             line = line.strip()
 
             if line.startswith("# "):
-                if in_chapter:
-                    doc.add_page_break()
-                in_chapter = True
                 title = line.replace("# ", "").strip()
-                doc.add_heading(title, 1)
-                heading_para = doc.paragraphs[-1]
+                heading = doc.add_heading(title, 1)
+                heading.paragraph_format.page_break_before = chapter_index > 0
+                chapter_index += 1
                 if is_rtl(language):
-                    self._set_rtl(heading_para)
+                    self._set_rtl(heading)
 
             elif line.startswith("## "):
                 title = line.replace("## ", "").strip()

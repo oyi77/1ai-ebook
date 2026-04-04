@@ -33,13 +33,14 @@ Positioning: {strategy.get("positioning", "")}
 
 Generate 3 title options, 3 subtitle options, and select the best ones.
 Create {chapter_count} chapters with summaries, subchapters, and estimated word counts.
+Each chapter should target 1500-2500 words minimum.
 
 Return JSON with:
 - titles: list of 3 title options
-- subtitles: list of 3 subtitle options  
+- subtitles: list of 3 subtitle options
 - best_title: the selected title
 - best_subtitle: the selected subtitle
-- chapters: list of chapters with title, summary, subchapters[], estimated_word_count
+- chapters: list of chapters with title, summary, subchapters (list of objects with "title" (string) and "summary" (1-sentence description)), estimated_word_count
 
 {language_instruction(target_language)}"""
 
@@ -62,7 +63,7 @@ Return JSON with:
                 {
                     "title": str,
                     "summary": str,
-                    "subchapters": list,
+                    "subchapters": [{"title": str, "summary": str}],
                     "estimated_word_count": int,
                 }
             ],
@@ -86,9 +87,14 @@ Return JSON with:
 
         with open(project_dir / "toc.md", "w") as f:
             f.write(f"# {outline.get('best_title', 'Untitled')}\n\n")
-            f.write(f"## {outline.get('best_subtitle', '')}\n\n")
-            f.write("## Table of Contents\n\n")
+            f.write(f"*{outline.get('best_subtitle', '')}*\n\n")
+            f.write("---\n\n## Table of Contents\n\n")
             for i, chapter in enumerate(outline.get("chapters", []), 1):
-                f.write(
-                    f"{i}. {chapter.get('title', '')} — {chapter.get('summary', '')}\n"
-                )
+                f.write(f"{i}. **{chapter.get('title', '')}**  \n")
+                f.write(f"   _{chapter.get('summary', '')}_\n")
+                for sub in chapter.get("subchapters", []):
+                    if isinstance(sub, dict):
+                        f.write(f"   - {sub.get('title', sub)}\n")
+                    else:
+                        f.write(f"   - {sub}\n")
+                f.write("\n")

@@ -8,6 +8,9 @@ import time
 from pathlib import Path
 from dataclasses import dataclass, field, asdict
 from src.config import get_config
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 STATS_FILE = Path("projects/model_stats.json")
 
@@ -47,7 +50,8 @@ class ModelTracker:
                     self._stats[task_type] = {}
                     for model, s in models.items():
                         self._stats[task_type][model] = ModelStats(**s)
-            except Exception:
+            except Exception as e:
+                logger.info("Failed to load model stats, resetting", error=str(e))
                 self._stats = {}
 
     def _save(self) -> None:

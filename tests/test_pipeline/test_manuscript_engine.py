@@ -7,10 +7,7 @@ import time
 def mock_ai_client():
     client = MagicMock()
     client.generate_text = MagicMock(
-        side_effect=[
-            "Chapter 1 content about getting started with blogging. This covers the basics of choosing a niche and setting up your first blog.",
-            "Chapter 2 content about content strategy. This covers how to create engaging content that your audience will love.",
-        ]
+        return_value="Generated chapter content covering the topic in depth with multiple paragraphs."
     )
     return client
 

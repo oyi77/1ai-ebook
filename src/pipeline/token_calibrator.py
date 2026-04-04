@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, asdict
 from src.config import get_config
+from src.logger import get_logger
+
+logger = get_logger(__name__)
 
 CALIBRATION_FILE = Path("projects/token_calibration.json")
 
@@ -34,8 +37,8 @@ class TokenCalibrator:
                 raw = json.loads(self.calibration_file.read_text())
                 for section_type, r in raw.items():
                     self._records[section_type] = CalibrationRecord(**r)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.info("Failed to load token calibration data", error=str(e))
 
     def _save(self) -> None:
         self.calibration_file.parent.mkdir(parents=True, exist_ok=True)
