@@ -5,8 +5,12 @@ import os
 import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 st.set_page_config(page_title="Marketing Kit", page_icon="💰", layout="wide")
+
+from utils.mobile_css import inject_mobile_css
+inject_mobile_css()
 
 st.title("💰 Marketing Kit")
 st.markdown("Your AI-generated marketing assets — copy, paste, and sell")

@@ -7,8 +7,12 @@ import time
 import requests
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 st.set_page_config(page_title="Create Ebook", page_icon="✍️", layout="wide")
+
+from utils.mobile_css import inject_mobile_css
+inject_mobile_css()
 
 st.title("✍️ Create Ebook")
 st.markdown("Fill in your ebook details and let AI do the writing")

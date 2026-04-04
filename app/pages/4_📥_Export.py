@@ -5,8 +5,12 @@ import os
 import json
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 st.set_page_config(page_title="Export & Download", page_icon="📥", layout="wide")
+
+from utils.mobile_css import inject_mobile_css
+inject_mobile_css()
 
 st.title("📥 Export & Download")
 st.markdown("Download your generated ebooks in DOCX or PDF format")
@@ -117,14 +121,22 @@ for project in completed:
         st.markdown("---")
         st.markdown("**Project Files:**")
         if project_dir.exists():
-            cols = st.columns(4)
-            file_idx = 0
-            for f in sorted(project_dir.rglob("*")):
-                if f.is_file() and not f.name.startswith("."):
-                    with cols[file_idx % 4]:
-                        st.markdown(f"📄 `{f.name}`")
-                        st.caption(f"{f.stat().st_size / 1024:.1f} KB")
-                    file_idx += 1
+            files = [f for f in sorted(project_dir.rglob("*")) if f.is_file() and not f.name.startswith(".")]
+            rows = [files[i:i+4] for i in range(0, len(files), 4)]
+            file_items_html = "".join(
+                f"<div style='min-width:120px;max-width:200px;flex:1 1 120px;'>"
+                f"<code style='font-size:0.75rem;word-break:break-all;'>📄 {f.name}</code>"
+                f"<div style='font-size:0.7rem;color:#888;'>{f.stat().st_size / 1024:.1f} KB</div>"
+                f"</div>"
+                for f in files
+            )
+            st.markdown(
+                f"<div style='max-height:180px;overflow-y:auto;border:1px solid #333;"
+                f"border-radius:6px;padding:10px;background:#0e1117;'>"
+                f"<div style='display:flex;flex-wrap:wrap;gap:10px;'>{file_items_html}</div>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
 
         st.markdown("---")
         st.markdown("**🚀 Marketing:**")

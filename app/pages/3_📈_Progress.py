@@ -4,8 +4,12 @@ import sys
 import time
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 st.set_page_config(page_title="Progress", page_icon="📈", layout="wide")
+
+from utils.mobile_css import inject_mobile_css
+inject_mobile_css()
 
 st.title("📈 Generation Progress")
 st.markdown("Track and resume your ebook generation jobs — multiple at once!")

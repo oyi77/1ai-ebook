@@ -6,11 +6,15 @@ import re
 from datetime import datetime
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from utils.mobile_css import inject_mobile_css
 from src.ai_client import OmnirouteClient
 _omni = OmnirouteClient()
 client = _omni.client  # the underlying openai.OpenAI instance
 
 st.set_page_config(page_title="Idea Research", page_icon="📊", layout="wide")
+
+inject_mobile_css()
 
 st.title("📊 Idea Research")
 st.markdown("Discover trending topics and profitable ebook niches — powered by AI")
