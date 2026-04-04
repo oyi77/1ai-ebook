@@ -9,23 +9,21 @@ from openai import OpenAI
 
 class PermanentAPIError(Exception):
     """Raised when an API error is permanent (e.g., 400, 401, 404) and should not be retried."""
-
     pass
 
 
 class OmnirouteClient:
+
     def _parse_json_response(self, content: str | None) -> dict[str, Any]:
         if content is None:
-            raise ValueError(
-                "AI response content is None (possible refusal or tool-call response)"
-            )
+            raise ValueError("AI response content is None (possible refusal or tool-call response)")
         # strip markdown code blocks from start/end
         content = content.strip()
-        content = re.sub(r"^```(?:json)?\s*", "", content)
-        content = re.sub(r"\s*```$", "", content)
+        content = re.sub(r'^```(?:json)?\s*', '', content)
+        content = re.sub(r'\s*```$', '', content)
         content = content.strip()
         # extract first JSON object or array if surrounded by prose
-        match = re.search(r"(\{.*\}|\[.*\])", content, re.DOTALL)
+        match = re.search(r'(\{.*\}|\[.*\])', content, re.DOTALL)
         if match:
             content = match.group(1)
         return json.loads(content)
@@ -52,7 +50,7 @@ class OmnirouteClient:
         self,
         prompt: str,
         system_prompt: str = "You are a helpful assistant.",
-        model: str = "qwen2.5:7b",
+        model: str = "auto/best-chat",
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> str:
@@ -71,10 +69,7 @@ class OmnirouteClient:
             except Exception as e:
                 err_str = str(e).lower()
                 # Permanent errors: do not retry
-                if any(
-                    code in err_str
-                    for code in ("400", "401", "403", "404", "invalid_request")
-                ):
+                if any(code in err_str for code in ("400", "401", "403", "404", "invalid_request")):
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
                 if attempt == self.max_retries - 1:
                     raise
@@ -87,7 +82,7 @@ class OmnirouteClient:
         prompt: str,
         system_prompt: str = "You are a helpful assistant.",
         response_schema: dict[str, Any] | None = None,
-        model: str = "qwen2.5:7b",
+        model: str = "auto/best-chat",
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
@@ -117,10 +112,7 @@ class OmnirouteClient:
             except Exception as e:
                 err_str = str(e).lower()
                 # Permanent errors: do not retry
-                if any(
-                    code in err_str
-                    for code in ("400", "401", "403", "404", "invalid_request")
-                ):
+                if any(code in err_str for code in ("400", "401", "403", "404", "invalid_request")):
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
                 if attempt == self.max_retries - 1:
                     raise
@@ -128,14 +120,11 @@ class OmnirouteClient:
                 time.sleep(wait_time)
         return {}
 
-    def generate_image(
-        self, prompt: str, size: str = "1024x1024", model: str = "dall-e-3"
-    ) -> bytes:
+    def generate_image(self, prompt: str, size: str = "1024x1024", model: str = "dall-e-3") -> bytes:
         """Generate an image. Raises RuntimeError if proxy does not support images."""
         if self._supports_images is False:
             raise RuntimeError("Image generation not supported by this OmniRoute proxy")
         import base64
-
         try:
             response = self.client.images.generate(
                 model=model,
@@ -149,10 +138,6 @@ class OmnirouteClient:
         except Exception as e:
             err_str = str(e).lower()
             type_name = type(e).__name__
-            if (
-                "404" in err_str
-                or "not found" in err_str
-                or type_name in ("NotFoundError", "APIStatusError")
-            ):
+            if "404" in err_str or "not found" in err_str or type_name in ("NotFoundError", "APIStatusError"):
                 self._supports_images = False
             raise RuntimeError(f"Image generation unavailable: {e}") from e
