@@ -5,14 +5,30 @@ from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent.parent / "config.json"
 
+
 @dataclass
 class PipelineConfig:
-    # AI routing
+    # AI routing (provider: omniroute, ollama, openai, or custom)
+    provider: str = "omniroute"
+    # Model names vary by provider
     default_model: str = "auto/free-chat"
     outline_model: str = "auto/free-chat"
     strategy_model: str = "auto/free-chat"
     cover_model: str = "auto/free-chat"
     qa_model: str = "auto/free-chat"
+
+    # Provider-specific model overrides (used when provider is not omniroute)
+    ollama_default_model: str = "qwen2.5:7b"
+    ollama_outline_model: str = "qwen2.5:7b"
+    ollama_strategy_model: str = "qwen2.5:7b"
+    ollama_cover_model: str = "qwen2.5:7b"
+    ollama_qa_model: str = "qwen2.5:7b"
+
+    openai_default_model: str = "gpt-4o-mini"
+    openai_outline_model: str = "gpt-4o-mini"
+    openai_strategy_model: str = "gpt-4o-mini"
+    openai_cover_model: str = "gpt-4o-mini"
+    openai_qa_model: str = "gpt-4o-mini"
 
     # Token budgets per section type
     tokens_intro: int = 600
@@ -22,7 +38,7 @@ class PipelineConfig:
     tokens_outline: int = 2000
 
     # QA thresholds
-    qa_word_count_tolerance: float = 0.20   # ±20%
+    qa_word_count_tolerance: float = 0.20  # ±20%
     qa_min_chapter_words: int = 300
     qa_max_retry_attempts: int = 3
 
@@ -39,8 +55,8 @@ class PipelineConfig:
     ui_port: int = 8501
 
     # Model performance tracking
-    model_success_threshold: float = 0.8   # min success rate to keep using a model
-    model_min_samples: int = 5             # samples before switching
+    model_success_threshold: float = 0.8  # min success rate to keep using a model
+    model_min_samples: int = 5  # samples before switching
 
     @classmethod
     def load(cls) -> "PipelineConfig":
@@ -56,13 +72,16 @@ class PipelineConfig:
     def save(self) -> None:
         CONFIG_PATH.write_text(json.dumps(asdict(self), indent=2))
 
+
 _config: PipelineConfig | None = None
+
 
 def get_config() -> PipelineConfig:
     global _config
     if _config is None:
         _config = PipelineConfig.load()
     return _config
+
 
 def reload_config() -> PipelineConfig:
     global _config
