@@ -87,7 +87,7 @@ with col1:
                                 f"Write a comprehensive guide about {topic.lower()} for beginners"
                             )
                             st.session_state["researched_category"] = niche["category"]
-                            st.switch_page("pages/2_✍️_Create_Ebook.py")
+                            st.switch_page("pages/2_Create_Ebook.py")
         except Exception as e:
             st.error(f"Failed to fetch trends: {e}")
             st.info("Using cached data. Try refreshing.")
@@ -198,4 +198,4 @@ if submitted and idea:
             st.session_state["researched_idea"] = idea
             st.session_state["researched_audience"] = target_audience
             st.session_state["researched_monetization"] = monetization
-            st.switch_page("pages/2_✍️_Create_Ebook.py")
+            st.switch_page("pages/2_Create_Ebook.py")

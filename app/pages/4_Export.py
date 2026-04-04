@@ -22,7 +22,7 @@ db_path = Path("data/ebook_generator.db")
 if not db_path.exists():
     st.info("No projects yet. Create one first!")
     st.page_link(
-        "pages/2_✍️_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️"
+        "pages/2_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️"
     )
     st.stop()
 
@@ -33,7 +33,7 @@ completed = [p for p in projects if p["status"] == "completed"]
 if not completed:
     st.info("No completed ebooks yet. Generate one first!")
     st.page_link(
-        "pages/2_✍️_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️"
+        "pages/2_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️"
     )
     st.stop()
 

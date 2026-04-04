@@ -26,7 +26,7 @@ db_path = Path("data/ebook_generator.db")
 
 if not db_path.exists():
     st.info("No projects yet. Create one first!")
-    st.page_link("pages/2_✍️_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️")
+    st.page_link("pages/2_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️")
     st.stop()
 
 repo = ProjectRepository(str(db_path))
@@ -34,7 +34,7 @@ projects = repo.list_projects(limit=20)
 
 if not projects:
     st.info("No projects yet. Create one first!")
-    st.page_link("pages/2_✍️_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️")
+    st.page_link("pages/2_Create_Ebook.py", label="→ Go to Create Ebook", icon="✍️")
     st.stop()
 
 # Handle batch resume
@@ -132,7 +132,7 @@ for project in projects:
             elif display_status == "completed":
                 if st.button("📥 Download", key=f"dl_{pid}"):
                     st.session_state["view_project"] = pid
-                    st.switch_page("pages/4_📥_Export.py")
+                    st.switch_page("pages/4_Export.py")
             elif display_status in ["generating", "failed", "draft"]:
                 if st.button("▶️ Resume", key=f"resume_{pid}", type="primary"):
                     tracker_start_resume(pid, str(db_path), "projects")

@@ -255,7 +255,7 @@ if resume_id and not st.session_state.generating:
 if st.session_state.generated_project_id and not st.session_state.generating:
     if st.button("📥 Go to Download Page", type="primary", key="go_to_export"):
         st.session_state["view_project"] = st.session_state.generated_project_id
-        st.switch_page("pages/4_📥_Export.py")
+        st.switch_page("pages/4_Export.py")
 
 if st.session_state.generating:
     st.info("⚙️ Generation in progress... Please wait.")
