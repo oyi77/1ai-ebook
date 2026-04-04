@@ -200,44 +200,73 @@ class ManuscriptEngine:
         summary = chapter.get("summary", "")
         subchapters = chapter.get("subchapters", [])
 
-        system_prompt = f"""You are an expert ebook writer. Write chapter {chapter_num} of {total_chapters} chapters.
-
-Tone: {strategy.get("tone", "conversational")}
-Audience: {strategy.get("audience", "general")}
-
-Chapter title: {title}
-Chapter summary: {summary}
-Subchapters to cover: {", ".join(subchapters)}
-
-Structure each chapter as follows:
-- Hook (1 paragraph): open with a question, surprising fact, or brief anecdote to engage the reader
-- Introduction (1 paragraph): overview of what this chapter covers
-- Body sections: one section per subchapter, each with a markdown subheading (##) and 2-4 paragraphs
-- Summary (1 paragraph): key takeaways from this chapter
-- Transition (1 sentence): bridge to the next chapter's topic
-
-{language_instruction(language)}"""
-
-        if style_ctx is not None:
-            system_prompt += f"\n\nStyle Guide:\n{style_ctx.to_prompt_block()}"
-
-        if profile and getattr(profile, 'is_fiction', False):
-            system_prompt += (
-                "\n\nFiction Writing Guidelines:\n"
-                "- Show don't tell: reveal character through action and dialogue, not description\n"
-                "- Use dialogue to advance plot and reveal character\n"
-                "- Include sensory details (sight, sound, smell, touch, taste)\n"
-                "- Maintain consistent character voice and mannerisms\n"
-                "- End each chapter with a hook that compels the reader to continue"
-            )
-
-        prompt = f"Write chapter {chapter_num}: {title}"
-
-        content = self.ai_client.generate_text(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            max_tokens=2000,
-            temperature=0.7,
+        tone = strategy.get("tone", "conversational")
+        audience = strategy.get("audience", "general")
+        lang_instr = language_instruction(language)
+        style_block = f"\n\nStyle Guide:\n{style_ctx.to_prompt_block()}" if style_ctx else ""
+        fiction_block = (
+            "\n\nFiction: show don't tell, use dialogue, sensory details, consistent character voice."
+            if profile and getattr(profile, 'is_fiction', False) else ""
         )
 
-        return content
+        import os
+        # Use a configurable model — defaults to auto/kimi (Kimi K2.5) which is
+        # reliably available; auto/best-chat can route to gated models (e.g. Claude Sonnet)
+        manuscript_model = os.getenv("EBOOK_MANUSCRIPT_MODEL", "auto/free-chat")
+
+        base_system = (
+            f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
+            f"Chapter {chapter_num}/{total_chapters}: {title}\nSummary: {summary}\n"
+            f"{lang_instr}{style_block}{fiction_block}\n"
+            "Do NOT repeat the section heading in the body text. Write in full paragraphs."
+        )
+
+        parts: list[str] = []
+
+        # 1. Hook + introduction
+        intro = self.ai_client.generate_text(
+            prompt=(
+                f"Write the opening for chapter '{title}'.\n"
+                "Include:\n"
+                "- Hook paragraph (question, surprising fact, or anecdote — NO heading)\n"
+                "- Introduction paragraph (what this chapter covers)\n"
+                "Do NOT include the chapter title. Start directly with the hook."
+            ),
+            system_prompt=base_system,
+            model=manuscript_model,
+            max_tokens=600,
+            temperature=0.7,
+        )
+        parts.append(intro.strip())
+
+        # 2. Each subchapter section
+        for sub in subchapters:
+            section = self.ai_client.generate_text(
+                prompt=(
+                    f"Write the section '{sub}' for chapter '{title}'.\n"
+                    "Write 3-5 substantial paragraphs covering the topic in depth.\n"
+                    "Be specific, practical, and engaging. Do NOT include a heading — start directly with prose."
+                ),
+                system_prompt=base_system,
+                model=manuscript_model,
+                max_tokens=1000,
+                temperature=0.7,
+            )
+            parts.append(f"\n\n### {sub}\n\n{section.strip()}")
+
+        # 3. Summary + transition
+        outro = self.ai_client.generate_text(
+            prompt=(
+                f"Write the closing for chapter '{title}'.\n"
+                "Include:\n"
+                "- Summary paragraph: 3-4 key takeaways from this chapter\n"
+                "- Transition sentence: one sentence bridging to the next chapter"
+            ),
+            system_prompt=base_system,
+            model=manuscript_model,
+            max_tokens=300,
+            temperature=0.7,
+        )
+        parts.append(f"\n\n{outro.strip()}")
+
+        return "\n\n".join(parts)
