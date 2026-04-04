@@ -103,6 +103,11 @@ class ProjectRepository:
             proj = cursor.fetchone()
             return [proj["target_language"]] if proj else ["en"]
 
+    def delete_project(self, project_id: int) -> None:
+        with self.db.get_connection() as conn:
+            conn.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            conn.commit()
+
 
 class JobRepository:
     def __init__(self, db_path: Path | str):

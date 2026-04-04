@@ -1,12 +1,18 @@
 import base64
+import hashlib
+import hmac
 import json
 import os
+import shutil
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import Cookie, Depends, FastAPI, Form, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from src.db.database import DatabaseManager
@@ -29,6 +35,27 @@ _generation_progress: dict[int, dict] = {}
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="AI Ebook Generator API", version="1.0")
+
+# Static files + templates
+_WEB_DIR = Path(__file__).parent.parent / "web"
+app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="static")
+_templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
+
+ADMIN_KEY = os.environ.get("ADMIN_KEY", API_KEY)
+
+
+def _sign(value: str) -> str:
+    return hmac.new(ADMIN_KEY.encode(), value.encode(), hashlib.sha256).hexdigest()
+
+
+def _check_admin(admin_session: str | None) -> bool:
+    if not admin_session:
+        return False
+    try:
+        val, sig = admin_session.rsplit(".", 1)
+        return hmac.compare_digest(sig, _sign(val))
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -68,6 +95,195 @@ class CreateProjectRequest(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+@app.get("/", response_class=HTMLResponse)
+def landing(request: Request):
+    return _templates.TemplateResponse("landing.html", {
+        "request": request,
+        "year": datetime.now().year,
+    })
+
+
+@app.get("/admin/login", response_class=HTMLResponse)
+def admin_login_page(request: Request, error: str = ""):
+    return _templates.TemplateResponse("admin/login.html", {
+        "request": request,
+        "error": error,
+    })
+
+
+@app.post("/admin/login")
+def admin_login(response: Response, password: str = Form(...)):
+    if password == ADMIN_KEY:
+        val = "admin"
+        session = f"{val}.{_sign(val)}"
+        resp = RedirectResponse(url="/admin", status_code=302)
+        resp.set_cookie("admin_session", session, httponly=True, samesite="lax", max_age=86400 * 7)
+        return resp
+    return RedirectResponse(url="/admin/login?error=Invalid+password", status_code=302)
+
+
+@app.get("/admin/logout")
+def admin_logout():
+    resp = RedirectResponse(url="/admin/login", status_code=302)
+    resp.delete_cookie("admin_session")
+    return resp
+
+
+@app.get("/admin", response_class=HTMLResponse)
+def admin_dashboard(request: Request, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    repo = _get_repo()
+    projects = repo.list_projects(limit=1000)
+    stats = {
+        "total": len(projects),
+        "completed": sum(1 for p in projects if p["status"] == "completed"),
+        "generating": sum(1 for p in projects if p["status"] == "generating"),
+        "failed": sum(1 for p in projects if p["status"] == "failed"),
+        "draft": sum(1 for p in projects if p["status"] == "draft"),
+    }
+    projects_dir = PROJECTS_DIR
+    storage_mb = 0
+    if projects_dir.exists():
+        storage_mb = round(sum(f.stat().st_size for f in projects_dir.rglob("*") if f.is_file()) / 1024 / 1024, 1)
+    from src.config import get_config
+    cfg = get_config()
+    system = {"model": cfg.default_model, "storage_mb": storage_mb}
+    return _templates.TemplateResponse("admin/dashboard.html", {
+        "request": request,
+        "page_title": "Dashboard",
+        "active_page": "dashboard",
+        "stats": stats,
+        "recent": projects[:10],
+        "system": system,
+    })
+
+
+@app.get("/admin/projects", response_class=HTMLResponse)
+def admin_projects_page(request: Request, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    repo = _get_repo()
+    projects = repo.list_projects(limit=500)
+    return _templates.TemplateResponse("admin/projects.html", {
+        "request": request,
+        "page_title": "Projects",
+        "active_page": "projects",
+        "projects": projects,
+    })
+
+
+@app.get("/admin/projects/{project_id}", response_class=HTMLResponse)
+def admin_project_detail(project_id: int, request: Request, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    repo = _get_repo()
+    project = repo.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Not found")
+    project_dir = PROJECTS_DIR / str(project_id)
+    files = []
+    if project_dir.exists():
+        for f in sorted(project_dir.rglob("*")):
+            if f.is_file():
+                rel = f.relative_to(project_dir)
+                files.append({"name": str(rel), "size": f"{f.stat().st_size // 1024} KB", "path": str(rel)})
+    qa = {}
+    qa_file = project_dir / "qa_report.json"
+    if qa_file.exists():
+        import json as _json
+        qa = _json.loads(qa_file.read_text())
+    cover_exists = (project_dir / "cover" / "cover.png").exists()
+    return _templates.TemplateResponse("admin/project_detail.html", {
+        "request": request,
+        "page_title": f"Project #{project_id}",
+        "active_page": "projects",
+        "project": project,
+        "files": files,
+        "qa": qa,
+        "cover_exists": cover_exists,
+    })
+
+
+@app.get("/admin/settings", response_class=HTMLResponse)
+def admin_settings_page(request: Request, admin_session: str | None = Cookie(default=None), message: str = ""):
+    if not _check_admin(admin_session):
+        return RedirectResponse(url="/admin/login", status_code=302)
+    from src.config import get_config
+    cfg = get_config()
+    return _templates.TemplateResponse("admin/settings.html", {
+        "request": request,
+        "page_title": "Settings",
+        "active_page": "settings",
+        "config": cfg,
+        "message": message,
+    })
+
+
+@app.post("/admin/api/settings")
+async def admin_save_settings(request: Request, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        raise HTTPException(status_code=401)
+    from src.config import get_config, reload_config
+    cfg = get_config()
+    form = await request.form()
+    for key, val in form.items():
+        if hasattr(cfg, key):
+            attr = getattr(cfg, key)
+            try:
+                if isinstance(attr, float):
+                    setattr(cfg, key, float(val))
+                elif isinstance(attr, int):
+                    setattr(cfg, key, int(val))
+                else:
+                    setattr(cfg, key, str(val))
+            except (ValueError, TypeError):
+                pass
+    cfg.save()
+    reload_config()
+    return RedirectResponse(url="/admin/settings?message=Saved+successfully", status_code=302)
+
+
+@app.get("/admin/api/stats")
+def admin_api_stats(admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        raise HTTPException(status_code=401)
+    repo = _get_repo()
+    projects = repo.list_projects(limit=1000)
+    return {
+        "total": len(projects),
+        "completed": sum(1 for p in projects if p["status"] == "completed"),
+        "generating": sum(1 for p in projects if p["status"] == "generating"),
+        "failed": sum(1 for p in projects if p["status"] == "failed"),
+        "draft": sum(1 for p in projects if p["status"] == "draft"),
+    }
+
+
+@app.delete("/admin/api/projects/{project_id}")
+def admin_delete_project(project_id: int, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        raise HTTPException(status_code=401)
+    repo = _get_repo()
+    project = repo.get_project(project_id)
+    if not project:
+        raise HTTPException(status_code=404)
+    project_dir = PROJECTS_DIR / str(project_id)
+    if project_dir.exists():
+        shutil.rmtree(project_dir)
+    repo.delete_project(project_id)
+    return {"deleted": project_id}
+
+
+@app.get("/admin/api/projects/{project_id}/cover")
+def admin_project_cover(project_id: int, admin_session: str | None = Cookie(default=None)):
+    if not _check_admin(admin_session):
+        raise HTTPException(status_code=401)
+    cover = PROJECTS_DIR / str(project_id) / "cover" / "cover.png"
+    if not cover.exists():
+        raise HTTPException(status_code=404)
+    return FileResponse(str(cover), media_type="image/png")
+
 
 @app.get("/health")
 def health():

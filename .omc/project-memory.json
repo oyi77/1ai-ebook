@@ -130,8 +130,14 @@
   "hotPaths": [
     {
       "path": "src/pipeline/manuscript_engine.py",
-      "accessCount": 47,
-      "lastAccessed": 1775286656471,
+      "accessCount": 51,
+      "lastAccessed": 1775288919092,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/qa_engine.py",
+      "accessCount": 28,
+      "lastAccessed": 1775288947444,
       "type": "file"
     },
     {
@@ -151,12 +157,6 @@
       "accessCount": 25,
       "lastAccessed": 1775285842459,
       "type": "directory"
-    },
-    {
-      "path": "src/pipeline/qa_engine.py",
-      "accessCount": 24,
-      "lastAccessed": 1775286791032,
-      "type": "file"
     },
     {
       "path": "src/pipeline/intake.py",
@@ -196,8 +196,8 @@
     },
     {
       "path": "src/db/repository.py",
-      "accessCount": 10,
-      "lastAccessed": 1775285858273,
+      "accessCount": 12,
+      "lastAccessed": 1775294955605,
       "type": "file"
     },
     {
