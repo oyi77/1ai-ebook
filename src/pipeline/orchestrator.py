@@ -88,6 +88,15 @@ class PipelineOrchestrator:
 
         self.repo.update_project_status(project_id, "generating")
 
+        try:
+            return self._run_pipeline(project_id, project, project_dir, on_progress)
+        except Exception as exc:
+            self.repo.update_project_status(project_id, "failed")
+            if on_progress:
+                on_progress(0, f"Pipeline failed: {exc}")
+            raise
+
+    def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress) -> dict:
         # Check if we can resume
         progress = self._check_progress(project_id)
         existing = self._load_existing_data(project_id)
@@ -202,20 +211,6 @@ class PipelineOrchestrator:
             if on_progress:
                 on_progress(92, "QA already completed — skipping...")
 
-        # Marketing Kit
-        try:
-            from src.pipeline.marketing_kit import MarketingKitGenerator
-            marketing_kit_gen = MarketingKitGenerator(ai_client=self.ai_client, projects_dir=self.projects_dir)
-            marketing_kit = marketing_kit_gen.generate(
-                project_id=project_id,
-                title=project.get("title", ""),
-                strategy=strategy,
-                outline=outline,
-            )
-            result["marketing_kit"] = marketing_kit
-        except Exception:
-            pass
-
         # Export
         if not progress["export"]:
             if on_progress:
@@ -236,6 +231,22 @@ class PipelineOrchestrator:
                     "pdf": project_dir / "exports" / "ebook.pdf",
                 },
             }
+
+        # Marketing Kit
+        try:
+            from src.pipeline.marketing_kit import MarketingKitGenerator
+            marketing_kit_gen = MarketingKitGenerator(ai_client=self.ai_client, projects_dir=self.projects_dir)
+            marketing_kit = marketing_kit_gen.generate(
+                project_id=project_id,
+                title=project.get("title", ""),
+                strategy=strategy,
+                outline=outline,
+            )
+            result["marketing_kit"] = marketing_kit
+        except Exception:
+            pass
+
+        self.repo.update_project_status(project_id, "completed")
 
         if on_progress:
             on_progress(100, "Complete!")

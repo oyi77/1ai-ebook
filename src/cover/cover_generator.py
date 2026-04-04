@@ -30,7 +30,10 @@ class CoverGenerator:
         product_mode: str = "lead_magnet",
         profile: "PipelineProfile | None" = None,
     ) -> dict:
-        prompt = self.generate_prompt(title, topic, tone, product_mode)
+        try:
+            prompt = self.generate_prompt(title, topic, tone, product_mode)
+        except Exception:
+            prompt = f"A professional ebook cover for '{title}'. Clean, modern design."
 
         project_dir = self.projects_dir / str(project_id) / "cover"
         project_dir.mkdir(parents=True, exist_ok=True)
