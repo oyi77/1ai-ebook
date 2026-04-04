@@ -122,21 +122,103 @@ for project in completed:
         st.markdown("**Project Files:**")
         if project_dir.exists():
             files = [f for f in sorted(project_dir.rglob("*")) if f.is_file() and not f.name.startswith(".")]
-            rows = [files[i:i+4] for i in range(0, len(files), 4)]
-            file_items_html = "".join(
-                f"<div style='min-width:120px;max-width:200px;flex:1 1 120px;'>"
-                f"<code style='font-size:0.75rem;word-break:break-all;'>📄 {f.name}</code>"
-                f"<div style='font-size:0.7rem;color:#888;'>{f.stat().st_size / 1024:.1f} KB</div>"
-                f"</div>"
+            EXT_ICON = {
+                ".md": "📝", ".json": "🗂️", ".docx": "📄", ".pdf": "📕",
+                ".epub": "📖", ".png": "🖼️", ".jpg": "🖼️", ".txt": "📃",
+            }
+            rows_html = "".join(
+                f"<tr>"
+                f"<td style='padding:4px 8px;white-space:nowrap;'>{EXT_ICON.get(f.suffix, '📄')} <code style='font-size:0.78rem;'>{f.name}</code></td>"
+                f"<td style='padding:4px 8px;color:#aaa;font-size:0.75rem;white-space:nowrap;'>{f.relative_to(project_dir).parent if f.relative_to(project_dir).parent != Path('.') else '/'}</td>"
+                f"<td style='padding:4px 8px;color:#aaa;font-size:0.75rem;text-align:right;white-space:nowrap;'>{f.stat().st_size / 1024:.1f} KB</td>"
+                f"</tr>"
                 for f in files
             )
             st.markdown(
-                f"<div style='max-height:180px;overflow-y:auto;border:1px solid #333;"
-                f"border-radius:6px;padding:10px;background:#0e1117;'>"
-                f"<div style='display:flex;flex-wrap:wrap;gap:10px;'>{file_items_html}</div>"
-                f"</div>",
+                f"<div style='max-height:200px;overflow-y:auto;border:1px solid #333;border-radius:6px;background:#0e1117;'>"
+                f"<table style='width:100%;border-collapse:collapse;'>"
+                f"<thead><tr style='border-bottom:1px solid #333;'>"
+                f"<th style='padding:5px 8px;text-align:left;font-size:0.75rem;color:#666;font-weight:500;'>File</th>"
+                f"<th style='padding:5px 8px;text-align:left;font-size:0.75rem;color:#666;font-weight:500;'>Path</th>"
+                f"<th style='padding:5px 8px;text-align:right;font-size:0.75rem;color:#666;font-weight:500;'>Size</th>"
+                f"</tr></thead>"
+                f"<tbody>{rows_html}</tbody>"
+                f"</table></div>",
                 unsafe_allow_html=True,
             )
+
+            # File preview
+            preview_key = f"preview_{project['id']}"
+            file_labels = {
+                f"{EXT_ICON.get(f.suffix, '📄')} {f.relative_to(project_dir)}": f
+                for f in files
+            }
+            selected_label = st.selectbox(
+                "👁 Preview file",
+                options=["— select a file —"] + list(file_labels.keys()),
+                key=preview_key,
+            )
+            if selected_label != "— select a file —":
+                selected_file = file_labels[selected_label]
+                suffix = selected_file.suffix.lower()
+                with st.container():
+                    st.markdown(
+                        f"<div style='border:1px solid #333;border-radius:6px;padding:12px;"
+                        f"background:#0e1117;max-height:400px;overflow-y:auto;'>",
+                        unsafe_allow_html=True,
+                    )
+                    if suffix in (".png", ".jpg", ".jpeg", ".gif", ".webp"):
+                        st.image(str(selected_file))
+                    elif suffix == ".json":
+                        with open(selected_file) as fh:
+                            st.json(json.load(fh))
+                    elif suffix in (".md", ".txt"):
+                        content = selected_file.read_text(encoding="utf-8", errors="replace")
+                        if suffix == ".md":
+                            st.markdown(content)
+                        else:
+                            st.text(content)
+                    elif suffix == ".pdf":
+                        import base64
+                        b64 = base64.b64encode(selected_file.read_bytes()).decode()
+                        st.markdown(
+                            f"<iframe src='data:application/pdf;base64,{b64}' "
+                            f"width='100%' height='500px' style='border:none;'></iframe>",
+                            unsafe_allow_html=True,
+                        )
+                    elif suffix == ".docx":
+                        try:
+                            from docx import Document
+                            doc = Document(str(selected_file))
+                            text = "\n\n".join(p.text for p in doc.paragraphs if p.text.strip())
+                            st.text_area("DOCX content", text, height=350, key=f"docx_{project['id']}")
+                        except Exception as e:
+                            st.warning(f"Cannot preview DOCX: {e}")
+                    elif suffix == ".epub":
+                        try:
+                            import ebooklib
+                            from ebooklib import epub as epublib
+                            from html.parser import HTMLParser
+
+                            class _Strip(HTMLParser):
+                                def __init__(self):
+                                    super().__init__()
+                                    self.parts = []
+                                def handle_data(self, data):
+                                    self.parts.append(data)
+
+                            book = epublib.read_epub(str(selected_file), options={"ignore_ncx": True})
+                            chunks = []
+                            for item in book.get_items_of_type(ebooklib.ITEM_DOCUMENT):
+                                p = _Strip()
+                                p.feed(item.get_content().decode("utf-8", errors="replace"))
+                                chunks.append("".join(p.parts))
+                            st.text_area("EPUB content", "\n\n".join(chunks)[:8000], height=350, key=f"epub_{project['id']}")
+                        except Exception as e:
+                            st.warning(f"Cannot preview EPUB: {e}")
+                    else:
+                        st.info(f"No preview available for `{selected_file.name}`")
+                    st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("---")
         st.markdown("**🚀 Marketing:**")
