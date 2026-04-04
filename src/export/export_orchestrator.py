@@ -4,8 +4,7 @@ from pathlib import Path
 
 from src.db.repository import ProjectRepository
 from src.export.docx_generator import DocxGenerator
-
-# from src.export.epub_generator import EpubGenerator
+from src.export.epub_generator import EpubGenerator
 from src.export.pdf_converter import PdfConverter
 
 
