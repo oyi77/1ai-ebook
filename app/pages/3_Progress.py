@@ -135,7 +135,11 @@ for project in projects:
                 if st.button("📥 Download", key=f"dl_{pid}"):
                     st.session_state["view_project"] = pid
                     st.switch_page("pages/4_Export.py")
-            elif display_status in ["generating", "failed", "draft"]:
+            elif display_status == "failed":
+                if st.button("🔄 Retry", key=f"resume_{pid}", type="primary"):
+                    tracker_start_resume(pid, str(db_path), "projects")
+                    st.rerun()
+            elif display_status in ["generating", "draft"]:
                 if st.button("▶️ Resume", key=f"resume_{pid}", type="primary"):
                     tracker_start_resume(pid, str(db_path), "projects")
                     st.rerun()

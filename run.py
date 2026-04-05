@@ -33,7 +33,6 @@ if __name__ == "__main__":
             "--server.port=8501",
             "--server.address=0.0.0.0",
             "--server.headless=true",
-            "--server.baseUrlPath=/app",
         ],
         check=False,
     )
