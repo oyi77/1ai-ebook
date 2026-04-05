@@ -11,6 +11,11 @@ class ProductMode(str, Enum):
     BONUS_CONTENT = "bonus_content"
     AUTHORITY = "authority"
     NOVEL = "novel"
+    SHORT_STORY = "short_story"
+    MEMOIR = "memoir"
+    HOW_TO_GUIDE = "how_to_guide"
+    TEXTBOOK = "textbook"
+    ACADEMIC_PAPER = "academic_paper"
 
 
 class ProjectStatus(str, Enum):

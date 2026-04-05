@@ -41,7 +41,43 @@ class StrategyPlanner:
             "goal": str,
         }
 
-        if profile and getattr(profile, 'is_fiction', False):
+        if product_mode in ("novel", "short_story"):
+            response_schema.update({
+                "protagonist": str,
+                "antagonist": str,
+                "setting": str,
+                "central_conflict": str,
+                "narrative_arc": str,
+                "genre": str,
+                "pov": str,
+            })
+        elif product_mode == "memoir":
+            response_schema.update({
+                "time_period": str,
+                "central_theme": str,
+                "narrative_arc": str,
+                "emotional_journey": str,
+            })
+        elif product_mode == "how_to_guide":
+            response_schema.update({
+                "skill_level": str,
+                "prerequisites": str,
+                "end_result": str,
+            })
+        elif product_mode == "textbook":
+            response_schema.update({
+                "subject": str,
+                "academic_level": str,
+                "learning_objectives": str,
+            })
+        elif product_mode == "academic_paper":
+            response_schema.update({
+                "research_question": str,
+                "methodology": str,
+                "field": str,
+                "citation_style": str,
+            })
+        elif profile and getattr(profile, 'is_fiction', False):
             response_schema.update({
                 "protagonist": str,
                 "antagonist": str,
@@ -107,13 +143,26 @@ class StrategyPlanner:
 
     def _build_system_prompt(self, product_mode: str, target_language: str = "en") -> str:
         mode_context = {
-            "lead_magnet": "free content to build email list",
-            "paid_ebook": "premium paid content",
+            "lead_magnet": "free content to build an email list",
+            "paid_ebook": "premium paid nonfiction content",
             "bonus_content": "bonus material for existing customers",
-            "authority": "thought leadership content",
-            "novel": "fiction storytelling with characters and narrative arc",
+            "authority": "thought leadership and authority-positioning content",
+            "novel": "a full-length fiction novel with characters and narrative arc",
+            "short_story": "a short fiction story (5,000–20,000 words) with a tight single arc",
+            "memoir": "a personal memoir in narrative nonfiction form, written in first person",
+            "how_to_guide": "a practical step-by-step how-to guide with numbered procedures and actionable instructions",
+            "textbook": "an educational textbook with learning objectives, concept explanations, examples, and review exercises",
+            "academic_paper": "a formal academic paper following APA 7th edition structure: abstract, introduction, literature review, methodology, results, discussion, conclusion, and references",
         }
-        return f"""You are an expert ebook strategist. Generate a strategy for an ebook that serves as {mode_context.get(product_mode, "content")}.
+        mode_instructions = {
+            "memoir": "\n\nFor memoir: the strategy must emphasize first-person narrative voice, specific scenes over generalizations, and an emotional arc that transforms the narrator.",
+            "how_to_guide": "\n\nFor how-to guide: every chapter must produce a tangible outcome. Use action verbs for all steps. Include prerequisites and expected result per chapter.",
+            "textbook": "\n\nFor textbook: each chapter must open with explicit learning objectives and close with review questions and exercises. Use progressive complexity across chapters.",
+            "academic_paper": "\n\nFor academic paper: tone must be formal, objective, and evidence-based. Structure must follow IMRaD convention. Citation style defaults to APA 7th unless specified.",
+            "short_story": "\n\nFor short story: the entire arc must resolve within the word count. Every scene must advance plot or reveal character. Avoid subplots that cannot be resolved.",
+        }
+        extra = mode_instructions.get(product_mode, "")
+        return f"""You are an expert book strategist. Generate a strategy for a book that serves as {mode_context.get(product_mode, "content")}.{extra}
 
 Return a JSON object with these fields:
 - audience: Target audience description

@@ -73,17 +73,28 @@ with st.form("ebook_form"):
         )
 
         NOVEL_GENRES = ["Fantasy", "Romance", "Thriller", "Sci-Fi", "Mystery", "Literary Fiction", "Historical Fiction", "Horror"]
+        SHORT_STORY_GENRES = ["Literary Fiction", "Horror", "Fantasy", "Sci-Fi", "Romance", "Thriller", "Mystery", "Magical Realism"]
+        ACADEMIC_FIELDS = ["Social Sciences", "Natural Sciences", "Engineering", "Humanities", "Business", "Medicine", "Law", "Education", "Psychology", "Economics"]
+        SKILL_LEVELS = ["Complete Beginner", "Beginner", "Intermediate", "Advanced", "Expert"]
+        ACADEMIC_LEVELS = ["Undergraduate", "Graduate", "Postgraduate / PhD", "Professional"]
+
+        _MODE_LABELS = {
+            "lead_magnet":    "📧 Lead Magnet — Free, builds email list",
+            "paid_ebook":     "💰 Paid Ebook — Premium nonfiction",
+            "bonus_content":  "🎁 Bonus Content — For existing customers",
+            "authority":      "🏆 Authority — Thought leadership",
+            "novel":          "📖 Novel — Full-length fiction",
+            "short_story":    "✍️  Short Story — 5k–20k words, single arc",
+            "memoir":         "🧠 Memoir — Personal narrative nonfiction",
+            "how_to_guide":   "🔧 How-To Guide — Step-by-step practical",
+            "textbook":       "🎓 Textbook — Educational with exercises",
+            "academic_paper": "🔬 Academic Paper — APA/IMRaD structure",
+        }
 
         product_mode = st.selectbox(
-            "Product Mode",
-            options=["lead_magnet", "paid_ebook", "bonus_content", "authority", "novel"],
-            format_func=lambda x: {
-                "lead_magnet": "Lead Magnet (Free, builds email list)",
-                "paid_ebook": "Paid Ebook ($)",
-                "bonus_content": "Bonus Content (For existing customers)",
-                "authority": "Authority (Thought leadership)",
-                "novel": "Novel (Fiction storytelling)",
-            }[x],
+            "Book Type",
+            options=list(_MODE_LABELS.keys()),
+            format_func=lambda x: _MODE_LABELS[x],
         )
 
         genre = None
@@ -93,14 +104,62 @@ with st.form("ebook_form"):
                 NOVEL_GENRES,
                 help="The genre affects writing style, tone, and cover design."
             )
+        elif product_mode == "short_story":
+            genre = st.selectbox(
+                "Genre",
+                SHORT_STORY_GENRES,
+                help="Short story genre shapes tone and narrative structure."
+            )
+        elif product_mode == "how_to_guide":
+            st.selectbox(
+                "Reader Skill Level",
+                SKILL_LEVELS,
+                key="skill_level",
+                help="Calibrates vocabulary complexity and assumed prior knowledge."
+            )
+        elif product_mode == "textbook":
+            st.selectbox(
+                "Academic Level",
+                ACADEMIC_LEVELS,
+                key="academic_level",
+                help="Sets depth of content, vocabulary, and exercise difficulty."
+            )
+        elif product_mode == "academic_paper":
+            st.selectbox(
+                "Field / Discipline",
+                ACADEMIC_FIELDS,
+                key="academic_field",
+                help="Influences citation conventions and disciplinary framing."
+            )
+            st.selectbox(
+                "Citation Style",
+                ["APA 7th", "Chicago 17th (Notes-Bibliography)", "Chicago 17th (Author-Date)", "MLA 9th", "IEEE", "Vancouver"],
+                key="citation_style",
+                help="Citation format used throughout the paper."
+            )
 
     with col2:
+        # Sensible defaults and ranges per book type
+        _chapter_defaults = {
+            "lead_magnet": (3, 2, 10),
+            "paid_ebook": (8, 5, 20),
+            "bonus_content": (3, 2, 8),
+            "authority": (7, 5, 15),
+            "novel": (20, 10, 40),
+            "short_story": (5, 3, 12),
+            "memoir": (12, 6, 20),
+            "how_to_guide": (8, 4, 15),
+            "textbook": (12, 6, 20),
+            "academic_paper": (6, 4, 8),  # abstract/intro/lit-review/methods/results/discussion/conclusion/refs
+        }
+        _ch_default, _ch_min, _ch_max = _chapter_defaults.get(product_mode, (5, 2, 20))
+        _section_label = "Sections" if product_mode == "academic_paper" else "Chapters"
         chapter_count = st.slider(
-            "Number of Chapters",
-            min_value=2,
-            max_value=20,
-            value=5,
-            help="How many chapters should your ebook have?",
+            f"Number of {_section_label}",
+            min_value=_ch_min,
+            max_value=_ch_max,
+            value=_ch_default,
+            help=f"How many {_section_label.lower()} should your book have?",
         )
 
         def _lang_label(code):
