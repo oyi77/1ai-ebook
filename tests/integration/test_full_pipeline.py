@@ -22,34 +22,74 @@ def test_full_pipeline_integration(test_db_path, temp_project_dir):
         chapter_count=2,
     )
 
+    # Realistic prose mock — long enough to pass word-count (500 target) and basic QA
+    _MOCK_PROSE = """
+The most effective leaders share one counterintuitive trait: they listen more than they speak.
+In study after study, teams led by quiet, attentive managers outperform those run by charismatic talkers.
+Why? Because listening creates the psychological safety that unlocks honest feedback.
+When your team knows you hear them, they bring you problems before they become crises.
+Start this week by holding a thirty-minute one-on-one with no agenda except to ask questions.
+
+Consider Sarah, a regional director who inherited a team with forty percent turnover.
+She spent her first month doing nothing but listening to frontline staff, customers, and data nobody had read.
+By month three, she had a clear picture of three fixable problems her predecessor had missed entirely.
+Her team's turnover dropped to eight percent within a year, not because she was smarter, but because she paid attention.
+
+The technique is simple but requires discipline. Block your calendar for focused listening sessions.
+Turn off notifications. Ask open-ended questions and resist the urge to jump in with solutions.
+Your job in these sessions is to understand, not to fix.
+The fixing comes later, and it will be far more accurate because of what you learned.
+
+Most organizations have feedback mechanisms that look good on paper but fail in practice.
+Annual performance reviews arrive too late to change anything meaningful.
+Suggestion boxes collect dust. Town halls become one-way broadcasts.
+The problem is not the format but the frequency and the follow-through.
+People stop sharing when they see their input disappear without acknowledgment.
+
+Listening at scale requires systems, not just intentions. Build a weekly cadence of brief check-ins.
+Use structured questions so you gather comparable data over time.
+Ask the same three questions every week: What is working? What is blocked? What do you need from me?
+The consistency matters as much as the questions themselves.
+""".strip()
+
     mock_client = MagicMock()
-    mock_client.generate_structured = MagicMock(
-        side_effect=[
+    # generate_structured handles strategy, outline, style guide, enrichment, etc.
+    mock_client.generate_structured = MagicMock(return_value={
+        "audience": "test",
+        "pain_points": ["pain1"],
+        "promise": "test promise",
+        "positioning": "test",
+        "tone": "professional",
+        "goal": "test goal",
+        "titles": ["Test Ebook"],
+        "subtitles": ["A Subtitle"],
+        "best_title": "Test Ebook",
+        "best_subtitle": "A Subtitle",
+        "chapters": [
             {
-                "audience": "test",
-                "pain_points": [],
-                "promise": "test",
-                "positioning": "test",
-                "tone": "test",
-                "goal": "test",
-            },
-            {
-                "titles": ["Test"],
-                "subtitles": ["Test"],
-                "best_title": "Test",
-                "best_subtitle": "Test",
-                "chapters": [
-                    {
-                        "title": "Ch1",
-                        "summary": "Sum",
-                        "subchapters": [],
-                        "estimated_word_count": 500,
-                    }
-                ],
-            },
-        ]
-    )
-    mock_client.generate_text = MagicMock(return_value="Chapter content here.")
+                "title": "Ch1",
+                "summary": "Summary of chapter one",
+                "subchapters": [{"title": "Section One"}, {"title": "Section Two"}],
+                "estimated_word_count": 1200,
+            }
+        ],
+        # enrichment fields
+        "chapter_summary_bullets": ["Point one", "Point two", "Point three"],
+        "callout_insight": "Key insight here.",
+        "case_study": {"name": "Alex", "conflict": "challenge", "resolution": "success"},
+        "action_steps": ["Do this", "Then this", "Finally this"],
+        "bridge_sentence": "The next chapter builds on these ideas.",
+        "terms": [],
+        "score": 0.9,
+        "reason": "good",
+        "voice_anchor": "professional and direct",
+        "pov": "second-person",
+        "banned_phrases": [],
+        "sentence_length_range": [12, 20],
+        "tone_adjectives": ["clear", "direct"],
+        "gold_standard_paragraph": _MOCK_PROSE[:200],
+    })
+    mock_client.generate_text = MagicMock(return_value=_MOCK_PROSE)
 
     orchestrator = PipelineOrchestrator(
         db_path=test_db_path,

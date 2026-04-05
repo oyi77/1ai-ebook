@@ -87,3 +87,12 @@ def test_qa_report_json_structure():
     assert "issues" in report
     assert "scores" in report
     assert "passed" in report
+
+
+def test_qa_word_count_error_message_uses_config_tolerance(tmp_path):
+    """The word count error message should reflect the configured tolerance value, not hardcode ±20%."""
+    import inspect
+    from src.pipeline.qa_engine import QAEngine
+
+    source = inspect.getsource(QAEngine)
+    assert "±20%" not in source, "Hardcoded ±20% found — should use f-string with tolerance variable"

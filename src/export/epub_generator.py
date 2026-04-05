@@ -15,20 +15,19 @@ logger = get_logger(__name__)
 CSS = """\
 body {
     font-family: Georgia, serif;
-    line-height: 1.5;
     font-size: 1em;
-    margin: 0 1em;
+    line-height: 1.5;
+    margin: 1em 2em;
 }
-h1 { color: #333; font-size: 2em; margin-top: 1em; page-break-after: avoid; }
-h2 { color: #555; font-size: 1.5em; margin-top: 0.8em; page-break-after: avoid; }
-h3 { page-break-after: avoid; }
-p {
-    margin-top: 0.8em;
-    margin-bottom: 0.8em;
-    text-indent: 0;
-}
+h1 { color: #333; font-size: 2em; line-height: 1.2; margin-bottom: 0.5em; page-break-after: avoid; }
+h2 { color: #555; font-size: 1.6em; line-height: 1.2; margin-bottom: 0.4em; page-break-after: avoid; }
+h3 { font-size: 1.3em; line-height: 1.2; page-break-after: avoid; }
+p  { margin: 0 0 0.9em 0; text-indent: 0; }
 strong { font-weight: bold; }
 em { font-style: italic; }
+img { max-width: 100%; height: auto; }
+blockquote { border-left: 3px solid #ccc; margin-left: 1.5em; padding-left: 1em; }
+aside { background: #f9f9f9; border-left: 4px solid #666; padding: 0.8em 1em; margin: 1em 0; }
 section.chapter { page-break-before: always; }
 .callout {
     border-left: 3px solid #666;
@@ -96,6 +95,36 @@ class EpubGenerator:
     def __init__(self, projects_dir: Path | str = "projects"):
         self.projects_dir = Path(projects_dir)
 
+    def _load_front_matter(self, project_dir: Path) -> list[dict]:
+        """Load front matter markdown files as chapter dicts if they exist."""
+        fm_dir = project_dir / "front_matter"
+        if not fm_dir.exists():
+            return []
+        order = ["title_page", "copyright", "dedication", "preface", "toc_page"]
+        chapters = []
+        for name in order:
+            f = fm_dir / f"{name}.md"
+            if f.exists():
+                content = f.read_text(encoding="utf-8")
+                title = name.replace("_", " ").title()
+                chapters.append({"title": title, "body": content, "epub_type": "frontmatter"})
+        return chapters
+
+    def _load_back_matter(self, project_dir: Path) -> list[dict]:
+        """Load back matter markdown files as chapter dicts if they exist."""
+        bm_dir = project_dir / "back_matter"
+        if not bm_dir.exists():
+            return []
+        order = ["glossary", "about_author"]
+        chapters = []
+        for name in order:
+            f = bm_dir / f"{name}.md"
+            if f.exists():
+                content = f.read_text(encoding="utf-8")
+                title = name.replace("_", " ").title()
+                chapters.append({"title": title, "body": content, "epub_type": "backmatter"})
+        return chapters
+
     def generate(
         self,
         project_id: int,
@@ -137,26 +166,35 @@ class EpubGenerator:
 
         if manuscript_file.exists():
             content = manuscript_file.read_text(encoding="utf-8")
-            chapters = _parse_manuscript(content)
+            body_chapters = _parse_manuscript(content)
         else:
-            chapters = []
+            body_chapters = []
 
-        if not chapters:
+        if not body_chapters:
             # Fallback: single title page
-            chapters = [{"title": title, "body": subtitle or ""}]
+            body_chapters = [{"title": title, "body": subtitle or ""}]
+
+        # Assign epub:type to body chapters by position
+        total_body = len(body_chapters)
+        for idx, ch in enumerate(body_chapters, start=1):
+            if "epub_type" not in ch:
+                if idx == 1:
+                    ch["epub_type"] = "introduction"
+                elif idx == total_body:
+                    ch["epub_type"] = "conclusion"
+                else:
+                    ch["epub_type"] = "chapter"
+
+        front_matter = self._load_front_matter(project_dir)
+        back_matter = self._load_back_matter(project_dir)
+        chapters = front_matter + body_chapters + back_matter
 
         total_chapters = len(chapters)
         for idx, ch in enumerate(chapters, start=1):
             ch_title = ch["title"]
             ch_body_html = _md_to_html(ch["body"])
 
-            # Assign epub:type based on chapter position
-            if idx == 1:
-                epub_type = "introduction"
-            elif idx == total_chapters:
-                epub_type = "conclusion"
-            else:
-                epub_type = "chapter"
+            epub_type = ch.get("epub_type", "chapter")
 
             html_content = (
                 f'<?xml version="1.0" encoding="UTF-8"?>'

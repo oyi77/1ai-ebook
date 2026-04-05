@@ -120,21 +120,78 @@ for project in completed:
 
         qa_report_path = project_dir / "qa_report.json"
         if qa_report_path.exists():
-            qa_report = json.loads(qa_report_path.read_text())
-            scores = qa_report.get("scores", {})
+            qa_data = json.loads(qa_report_path.read_text())
+            scores = qa_data.get("scores", {})
 
-            st.subheader("Quality Report")
-            cols = st.columns(len(scores) or 1)
-            for i, (key, val) in enumerate(scores.items()):
-                with cols[i % len(cols)]:
-                    label = key.replace("_", " ").title()
-                    color = "🟢" if val >= 0.8 else ("🟡" if val >= 0.6 else "🔴")
-                    st.metric(label=f"{color} {label}", value=f"{val:.0%}")
+            st.markdown("### Quality Report")
 
-            if not qa_report.get("passed"):
-                st.warning("QA issues found:")
-                for issue in qa_report.get("issues", []):
-                    st.write(f"• {issue}")
+            # Overall pass/fail
+            passed = qa_data.get("passed", False)
+            if passed:
+                st.success("✅ Quality check passed — ready to export")
+            else:
+                st.error("❌ Quality check failed — see issues below")
+
+            # Issues list
+            issues = qa_data.get("issues", [])
+            if issues:
+                with st.expander(f"⚠️ {len(issues)} issue(s) found"):
+                    for issue in issues:
+                        st.markdown(f"- {issue}")
+
+            # Key metrics row
+            def quality_badge(value, low, high):
+                if value is None:
+                    return "⚪"
+                if low <= value <= high:
+                    return "🟢"
+                elif abs(value - (low + high) / 2) / ((high - low) / 2) < 1.5:
+                    return "🟡"
+                return "🔴"
+
+            col1, col2, col3, col4 = st.columns(4)
+
+            prose_q = scores.get("prose_quality")
+            fre = scores.get("flesch_reading_ease")
+            passive = scores.get("passive_voice_ratio")
+            slop = scores.get("ai_slop_density")
+
+            with col1:
+                badge = quality_badge(prose_q, 0.8, 1.0)
+                val = f"{prose_q:.2f}" if prose_q is not None else "N/A"
+                st.metric(f"{badge} Prose Quality", val, help="Target: ≥ 0.80")
+
+            with col2:
+                badge = quality_badge(fre, 60, 75) if fre is not None else "⚪"
+                val = f"{fre:.0f}" if fre is not None else "N/A"
+                st.metric(f"{badge} Readability (Flesch)", val, help="Target: 60–75 for nonfiction")
+
+            with col3:
+                badge = "🟢" if passive is not None and passive < 0.10 else ("🟡" if passive is not None and passive < 0.15 else "🔴")
+                val = f"{passive*100:.1f}%" if passive is not None else "N/A"
+                st.metric(f"{badge} Passive Voice", val, help="Target: < 10%")
+
+            with col4:
+                badge = "🟢" if slop is not None and slop < 1.0 else ("🟡" if slop is not None and slop < 2.0 else "🔴")
+                val = f"{slop:.2f}" if slop is not None else "N/A"
+                st.metric(f"{badge} AI Slop Density", val, help="Target: < 1.0 per 500 words")
+
+            # Per-chapter breakdown
+            chapter_scores = qa_data.get("chapter_scores", {})
+            if chapter_scores:
+                with st.expander("📊 Per-chapter breakdown"):
+                    for ch_title, ch_data in chapter_scores.items():
+                        st.markdown(f"**{ch_title}**")
+                        c1, c2, c3 = st.columns(3)
+                        with c1:
+                            pq = ch_data.get("prose_quality", "N/A")
+                            st.markdown(f"Prose: `{pq:.2f}`" if isinstance(pq, float) else f"Prose: `{pq}`")
+                        with c2:
+                            wc = ch_data.get("word_count", "N/A")
+                            st.markdown(f"Words: `{wc}`")
+                        with c3:
+                            ss = ch_data.get("structure_score", "N/A")
+                            st.markdown(f"Structure: `{ss:.2f}`" if isinstance(ss, float) else f"Structure: `{ss}`")
 
         st.markdown("---")
         st.markdown("**Project Files:**")

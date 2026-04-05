@@ -293,6 +293,62 @@ class ManuscriptEngine:
         manuscript_file.write_text("".join(manuscript_parts))
         return {"manuscript": str(manuscript_file), "chapters": chapter_metadata}
 
+    def regenerate_chapter(self, chapter_idx: int, failure_context: str) -> str:
+        """Re-generate a single chapter with QA failure context injected into prompt.
+
+        Called by the post-QA retry loop in the orchestrator.
+        """
+        import structlog
+        log = structlog.get_logger(__name__)
+        log.info("regenerating_chapter", chapter_idx=chapter_idx, failure_context=failure_context[:100])
+
+        # regenerate_chapter requires a project_id set on the instance;
+        # callers must set self._project_id before calling this method.
+        project_id = getattr(self, "_project_id", None)
+        if project_id is None:
+            raise RuntimeError("ManuscriptEngine._project_id must be set before calling regenerate_chapter")
+
+        project_dir = self.projects_dir / str(project_id)
+        outline_path = project_dir / "outline.json"
+        strategy_path = project_dir / "strategy.json"
+        style_ctx_path = project_dir / "style_context.json"
+
+        import json as _json
+        outline = _json.loads(outline_path.read_text()) if outline_path.exists() else {}
+        strategy = _json.loads(strategy_path.read_text()) if strategy_path.exists() else {}
+        style_ctx = (
+            StyleContext.load_or_default(style_ctx_path, tone=strategy.get("tone", "conversational"))
+            if style_ctx_path.exists()
+            else StyleContext(tone=strategy.get("tone", "conversational"))
+        )
+
+        chapters = outline.get("chapters", [])
+        if chapter_idx >= len(chapters):
+            log.warning("chapter_idx_out_of_range", chapter_idx=chapter_idx)
+            return ""
+
+        chapter = chapters[chapter_idx]
+
+        extra_instruction = (
+            f"\n\nIMPORTANT: A previous attempt at this chapter failed quality review. "
+            f"Specific issues to fix: {failure_context}\n"
+            f"Please address these issues directly in your writing."
+        )
+
+        content = self._generate_chapter(
+            chapter=chapter,
+            chapter_num=chapter_idx + 1,
+            total_chapters=len(chapters),
+            strategy=strategy,
+            style_ctx=style_ctx,
+            extra_instruction=extra_instruction,
+        )
+
+        chapter_path = project_dir / "chapters" / f"{chapter_idx + 1}.md"
+        chapter_path.write_text(content, encoding="utf-8")
+        log.info("chapter_regenerated", chapter_idx=chapter_idx, words=len(content.split()))
+        return content
+
     def _generate_chapter(
         self,
         chapter: dict,
@@ -304,6 +360,7 @@ class ManuscriptEngine:
         profile: "PipelineProfile | None" = None,
         manuscript_model: str | None = None,
         style_guide: "StyleGuide | None" = None,
+        extra_instruction: str = "",
     ) -> str:
         title = chapter.get("title", "")
         summary = chapter.get("summary", "")
@@ -330,7 +387,8 @@ class ManuscriptEngine:
         base_system = (
             f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
             f"Chapter {chapter_num}/{total_chapters}: {title}\nSummary: {summary}\n"
-            f"{lang_instr}{style_block}{fiction_block}{style_guide_block}\n"
+            f"{lang_instr}{style_block}{fiction_block}{style_guide_block}"
+            f"{extra_instruction}\n"
             "Do NOT repeat the section heading in the body text. Write in full paragraphs."
         )
 

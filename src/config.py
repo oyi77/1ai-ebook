@@ -45,9 +45,12 @@ class PipelineConfig:
     tokens_outline: int = 3000
 
     # QA thresholds
-    qa_word_count_tolerance: float = 0.20  # ±20%
+    qa_word_count_tolerance: float = 0.15          # ±15%
     qa_min_chapter_words: int = 800
     qa_max_retry_attempts: int = 3
+    qa_readability_enabled: bool = True
+    qa_structure_check_enabled: bool = True
+    qa_post_qa_retries: int = 2
 
     # Export
     docx_author: str = "AI Ebook Generator"

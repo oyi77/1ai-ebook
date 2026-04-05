@@ -40,20 +40,30 @@ def test_to_system_prompt_block_small_omits_tone():
 
 def test_detect_violations_finds_banned_phrases():
     sg = StyleGuide(banned_phrases=["delve", "furthermore"])
-    violations = sg.detect_violations("Let us delve into this topic. Furthermore, we should note...")
+    violations, density = sg.detect_violations("Let us delve into this topic. Furthermore, we should note...")
     assert "delve" in violations
     assert "furthermore" in violations
 
 
 def test_detect_violations_empty():
     sg = StyleGuide(banned_phrases=["delve"])
-    assert sg.detect_violations("This is clean prose.") == []
+    violations, density = sg.detect_violations("This is clean prose.")
+    assert violations == []
 
 
 def test_detect_violations_case_insensitive():
     sg = StyleGuide(banned_phrases=["delve"])
-    violations = sg.detect_violations("Let us DELVE into this.")
+    violations, density = sg.detect_violations("Let us DELVE into this.")
     assert "delve" in violations
+
+
+def test_detect_violations_density():
+    sg = StyleGuide(banned_phrases=["delve", "furthermore"])
+    # 500 words with 2 violations → density = 2 / (500/500) = 2.0
+    text = "word " * 500 + "delve furthermore"
+    violations, density = sg.detect_violations(text)
+    assert len(violations) == 2
+    assert density > 0
 
 
 def test_default_banned_phrases_present():

@@ -118,6 +118,17 @@ class PipelineOrchestrator:
         except Exception as e:
             logger.info("Webhook event skipped", event=event, error=str(e))
 
+    def _extract_failing_chapters(self, qa_report: dict) -> list:
+        """Extract (chapter_idx, failure_context) pairs from QA report issues."""
+        import re
+        failing = []
+        for issue in qa_report.get("issues", []):
+            match = re.search(r'[Cc]hapter\s+(\d+)', issue)
+            if match:
+                ch_idx = int(match.group(1)) - 1  # 0-indexed
+                failing.append((ch_idx, issue))
+        return failing
+
     def _run_pipeline(self, project_id: int, project: dict, project_dir: Path, on_progress, manuscript_model: str | None = None, quality_level: str = "fast") -> dict:
         # Check if we can resume
         progress = self._check_progress(project_id)
@@ -258,6 +269,54 @@ class PipelineOrchestrator:
         else:
             if on_progress:
                 on_progress(92, "QA already completed — skipping...")
+            # Load existing report for potential retry evaluation
+            qa_report_path = project_dir / "qa_report.json"
+            if qa_report_path.exists():
+                with open(qa_report_path) as f:
+                    report = json.load(f)
+            else:
+                report = {"passed": True, "issues": []}
+
+        # Post-QA retry loop
+        from src.config import get_config
+        config = get_config()
+        if not report.get("passed", True) and config.qa_post_qa_retries > 0:
+            logger.info("post_qa_retry_starting", project_id=project_id,
+                        issues=len(report.get("issues", [])))
+            manuscript_engine = ManuscriptEngine(self.ai_client, projects_dir=self.projects_dir)
+            manuscript_engine._project_id = project_id
+            for attempt in range(config.qa_post_qa_retries):
+                failing_chapters = self._extract_failing_chapters(report)
+                if not failing_chapters:
+                    break
+                for ch_idx, failure_context in failing_chapters:
+                    manuscript_engine.regenerate_chapter(ch_idx, failure_context)
+                # Re-run QA
+                with open(project_dir / "manuscript.json") as f:
+                    manuscript_data = json.load(f)
+                chapters_dir = project_dir / "chapters"
+                manuscript = {
+                    "chapters": [
+                        {
+                            "chapter": ch.get("chapter", i + 1),
+                            "title": ch.get("title"),
+                            "word_count": ch.get("word_count"),
+                            "content": (chapters_dir / f"{ch.get('chapter', i + 1)}.md").read_text()
+                            if (chapters_dir / f"{ch.get('chapter', i + 1)}.md").exists() else "",
+                        }
+                        for i, ch in enumerate(manuscript_data.get("chapters", []))
+                    ]
+                }
+                report = qa_engine.run(manuscript, outline, strategy, profile=profile)
+                qa_engine.save_report(project_id, report, self.projects_dir)
+                if report.get("passed", False):
+                    logger.info("post_qa_retry_succeeded", attempt=attempt + 1)
+                    break
+            else:
+                if not report.get("passed", False):
+                    logger.warning("post_qa_retry_exhausted", project_id=project_id)
+                    self.repo.update_project_status(project_id, "failed")
+                    return {"success": False, "error": "QA failed after retries"}
 
         # Export
         if not progress["export"]:

@@ -7,6 +7,8 @@ from typing import TYPE_CHECKING
 from src.ai_client import OmnirouteClient
 from src.config import get_config
 from src.logger import get_logger
+from src.pipeline.prose_scorer import ProseScorer
+from src.pipeline.chapter_structure_checker import ChapterStructureChecker
 
 logger = get_logger(__name__)
 
@@ -15,9 +17,17 @@ if TYPE_CHECKING:
 
 
 class QAEngine:
-    def __init__(self, ai_client: OmnirouteClient | None = None, quality_level: str = "fast"):
+    def __init__(
+        self,
+        ai_client: OmnirouteClient | None = None,
+        quality_level: str = "fast",
+        prose_scorer: ProseScorer | None = None,
+        structure_checker: ChapterStructureChecker | None = None,
+    ):
         self.ai_client = ai_client
         self.quality_level = quality_level
+        self.prose_scorer = prose_scorer or ProseScorer()
+        self.structure_checker = structure_checker or ChapterStructureChecker()
 
     def run(
         self,
@@ -60,6 +70,19 @@ class QAEngine:
 
         if prose_scores:
             scores["prose_quality"] = round(sum(prose_scores) / len(prose_scores), 3)
+
+        # Chapter structure check (per-chapter)
+        structure_scores = []
+        for ch in manuscript.get("chapters", []):
+            content = ch.get("content", "")
+            if content:
+                sc = self._check_chapter_structure(content, ch.get("title", f"Chapter {ch.get('chapter','?')}"))
+                if not sc.get("skipped"):
+                    structure_scores.append(sc["structure_score"])
+                    issues.extend(sc.get("issues", []))
+
+        if structure_scores:
+            scores["chapter_structure"] = round(sum(structure_scores) / len(structure_scores), 3)
 
         from src.pipeline.content_safety import ContentSafety
         safety = ContentSafety()
@@ -111,14 +134,22 @@ class QAEngine:
     def _check_word_count(self, manuscript: dict, outline: dict) -> list[str]:
         issues = []
 
+        # Build a title -> outline chapter map for accurate matching
+        outline_by_title = {
+            ch.get("title", "").lower(): ch
+            for ch in outline.get("chapters", [])
+        }
+
         for i, chapter in enumerate(manuscript.get("chapters", []), 1):
             word_count = chapter.get("word_count", 0)
+            title_key = chapter.get("title", "").lower()
 
-            outline_ch = (
-                outline.get("chapters", [])[i - 1]
-                if i <= len(outline.get("chapters", []))
-                else {}
-            )
+            outline_ch = outline_by_title.get(title_key, {})
+            if not outline_ch:
+                # Fall back to positional lookup when title doesn't match
+                chapters_list = outline.get("chapters", [])
+                outline_ch = chapters_list[i - 1] if i <= len(chapters_list) else {}
+
             target = outline_ch.get("estimated_word_count", 500)
 
             tolerance = get_config().qa_word_count_tolerance
@@ -126,72 +157,74 @@ class QAEngine:
                 1 + tolerance
             ):
                 issues.append(
-                    f"Chapter {i} word count ({word_count}) outside ±20% of target ({target})"
+                    f"Chapter {i} word count ({word_count}) outside ±{tolerance*100:.0f}% of target ({target})"
                 )
 
         return issues
 
     def _check_prose_quality(self, chapter_content: str, language: str = "en") -> dict:
-        """Heuristic prose quality check. English-only; returns skipped for other languages."""
-        if language != "en":
+        """Delegate prose quality scoring to ProseScorer. English-only; returns skipped for other languages."""
+        if language and language.lower() not in ("english", "en", ""):
             return {"prose_quality": None, "skipped": True, "reason": f"language={language}"}
 
-        import re
-        import math
+        result = self.prose_scorer.score(chapter_content)
 
-        # 1. Banned phrases check
-        banned = [
-            "delve", "it's worth noting", "in conclusion", "as we explore",
-            "in today's fast-paced world", "it is important to note",
-            "furthermore", "moreover", "additionally", "needless to say",
-        ]
+        slop_hits = result.details.get("slop_hits", [])
+
+        # Architecture check (action steps + chapter summary) — preserved from original
         text_lower = chapter_content.lower()
-        found_banned = [p for p in banned if p in text_lower]
-        banned_penalty = min(len(found_banned) * 0.1, 0.3)  # max 0.3 penalty
+        has_action_steps = "### action steps" in text_lower or "## action steps" in text_lower
+        has_summary = (
+            "### chapter summary" in text_lower
+            or "## chapter summary" in text_lower
+            or "## summary" in text_lower
+        )
 
-        # 2. Sentence length uniformity (stddev of word counts per sentence)
-        sentences = re.split(r'[.!?]+', chapter_content)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
-        if len(sentences) >= 3:
-            lengths = [len(s.split()) for s in sentences]
-            mean = sum(lengths) / len(lengths)
-            variance = sum((l - mean) ** 2 for l in lengths) / len(lengths)
-            stddev = math.sqrt(variance)
-            # Good writing has stddev >= 5; below 3 is suspiciously uniform
-            uniformity_penalty = max(0, (5 - stddev) * 0.05) if stddev < 5 else 0
-        else:
-            uniformity_penalty = 0
-
-        # 3. Abstract opener check
+        # Abstract opener check — preserved from original
         first_200 = chapter_content[:200].lower()
         abstract_openers = ["in today's world", "in today's fast", "as we explore", "it is important"]
         has_abstract_opener = any(op in first_200 for op in abstract_openers)
-        opener_penalty = 0.15 if has_abstract_opener else 0
 
-        # 4. Hedge word density
-        hedge_words = ["may", "might", "could", "perhaps", "possibly", "seemingly", "arguably"]
-        hedge_count = sum(text_lower.count(f" {h} ") for h in hedge_words)
-        hedge_density = hedge_count / max(len(sentences), 1)
-        hedge_penalty = 0.1 if hedge_density > 0.08 else 0
-
-        # 5. Architecture check (action steps + chapter summary)
-        has_action_steps = "### action steps" in text_lower or "## action steps" in text_lower
-        has_summary = "### chapter summary" in text_lower or "## chapter summary" in text_lower or "## summary" in text_lower
+        # Apply architecture penalty on top of ProseScorer score (action steps + summary)
         architecture_penalty = (0 if has_action_steps else 0.1) + (0 if has_summary else 0.1)
-
-        score = max(0.0, 1.0 - banned_penalty - uniformity_penalty - opener_penalty - hedge_penalty - architecture_penalty)
+        final_score = max(0.0, min(1.0, result.score - architecture_penalty))
 
         return {
-            "prose_quality": round(score, 3),
+            "prose_quality": round(final_score, 3),
+            "flesch_reading_ease": result.flesch_score,
+            "passive_voice_ratio": result.passive_ratio,
+            "ai_slop_density": result.slop_hit_count,
+            "sentence_length_stdev": None,
+            "mattr": None,
+            "issues": slop_hits[:5],
             "skipped": False,
             "details": {
-                "banned_phrases_found": found_banned,
-                "sentence_stddev": round(stddev if len(sentences) >= 3 else 0, 2),
+                "banned_phrases_found": slop_hits,
                 "has_abstract_opener": has_abstract_opener,
-                "hedge_density": round(hedge_density, 3),
                 "has_action_steps": has_action_steps,
                 "has_summary": has_summary,
-            }
+                "flesch_score": result.flesch_score,
+                "passive_ratio": result.passive_ratio,
+                "repetition_ratio": result.repetition_ratio,
+            },
+        }
+
+    def _check_chapter_structure(self, content: str, chapter_title: str) -> dict:
+        config = get_config()
+        if not config.qa_structure_check_enabled:
+            return {"structure_score": 1.0, "skipped": True}
+        result = self.structure_checker.check(content)
+        issues = []
+        if result.prohibited_openers:
+            issues.append(f"Prohibited opener in '{chapter_title}'")
+        if result.h2_count < 2:
+            issues.append(f"Too few sections in '{chapter_title}' (only {result.h2_count} H2s)")
+        return {
+            "structure_score": result.structure_score,
+            "h2_count": result.h2_count,
+            "has_case_study": result.has_case_study,
+            "issues": issues,
+            "skipped": False,
         }
 
     def _check_consistency(self, manuscript: dict, strategy: dict) -> float | None:
