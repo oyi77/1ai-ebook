@@ -251,10 +251,10 @@ class PipelineOrchestrator:
                 on_progress(85, "Cover already exists — skipping...")
 
         # QA
+        qa_engine = QAEngine()
         if not progress["qa"]:
             if on_progress:
                 on_progress(92, "Running QA checks...")
-            qa_engine = QAEngine()
             with open(project_dir / "manuscript.json") as f:
                 manuscript_data = json.load(f)
 

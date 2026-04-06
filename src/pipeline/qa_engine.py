@@ -59,16 +59,17 @@ class QAEngine:
         # Prose quality check (per-chapter, English only)
         language = strategy.get("language", "en") if strategy else "en"
         prose_scores = []
+        prose_quality_enabled = get_config().qa_prose_quality_enabled
         for ch in manuscript.get("chapters", []):
             content = ch.get("content", "")
             if content:
                 pq = self._check_prose_quality(content, language)
                 if not pq.get("skipped"):
                     prose_scores.append(pq["prose_quality"])
-                    if pq["prose_quality"] < 0.8:
+                    if prose_quality_enabled and pq["prose_quality"] < 0.8:
                         issues.append(f"Chapter {ch.get('chapter','?')} prose quality {pq['prose_quality']:.2f} below threshold")
 
-        if prose_scores:
+        if prose_scores and prose_quality_enabled:
             scores["prose_quality"] = round(sum(prose_scores) / len(prose_scores), 3)
 
         # Chapter structure check (per-chapter)
@@ -153,11 +154,10 @@ class QAEngine:
             target = outline_ch.get("estimated_word_count", 500)
 
             tolerance = get_config().qa_word_count_tolerance
-            if word_count < target * (1 - tolerance) or word_count > target * (
-                1 + tolerance
-            ):
+            # Only fail if too short — longer chapters are acceptable (more content = better)
+            if word_count < target * (1 - tolerance):
                 issues.append(
-                    f"Chapter {i} word count ({word_count}) outside ±{tolerance*100:.0f}% of target ({target})"
+                    f"Chapter {i} word count ({word_count}) below -{tolerance*100:.0f}% of target ({target})"
                 )
 
         return issues

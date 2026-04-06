@@ -4,6 +4,7 @@ import hmac
 import json
 import os
 import shutil
+import sqlite3
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +53,36 @@ app.mount("/static", StaticFiles(directory=str(_WEB_DIR / "static")), name="stat
 _templates = Jinja2Templates(directory=str(_WEB_DIR / "templates"))
 
 ADMIN_KEY = os.environ.get("ADMIN_KEY", API_KEY)
+
+_OMNIROUTE_DB = Path.home() / ".omniroute" / "storage.sqlite"
+
+OMNIROUTE_COMBOS_FREE = [
+    "auto/free-chat", "auto/free-fast", "auto/free-reasoning",
+    "auto/free-coding", "auto/free-vision", "auto/free-llama",
+]
+OMNIROUTE_COMBOS_PAID = [
+    "auto/pro-fast", "auto/pro-chat", "auto/pro-reasoning",
+    "auto/pro-coding", "auto/pro-vision",
+    "auto/best-fast", "auto/best-chat", "auto/best-reasoning",
+    "auto/best-coding", "auto/best-vision",
+    "auto/claude-sonnet", "auto/claude-opus",
+    "auto/gpt", "auto/gemini", "auto/deepseek",
+    "auto/reasoning", "auto/coding", "auto/vision",
+]
+
+
+def _get_available_models() -> list[str]:
+    """Read combo names from OmniRoute DB, fall back to hardcoded list."""
+    if _OMNIROUTE_DB.exists():
+        try:
+            conn = sqlite3.connect(str(_OMNIROUTE_DB))
+            rows = conn.execute("SELECT name FROM combos ORDER BY name").fetchall()
+            conn.close()
+            if rows:
+                return [r[0] for r in rows]
+        except Exception:
+            pass
+    return OMNIROUTE_COMBOS_FREE + OMNIROUTE_COMBOS_PAID
 
 
 def _sign(value: str) -> str:
@@ -229,6 +260,7 @@ def admin_settings_page(request: Request, admin_session: str | None = Cookie(def
         "active_page": "settings",
         "config": cfg,
         "message": message,
+        "available_models": _get_available_models(),
     })
 
 

@@ -25,7 +25,10 @@ class ManuscriptEngine:
     ):
         self.ai_client = ai_client or OmnirouteClient()
         self.projects_dir = Path(projects_dir)
-        self.model_tracker = ModelTracker()
+        # Namespace stats file by provider so Ollama/OmniRoute caches don't bleed
+        _provider = self.ai_client.provider
+        _stats_file = Path("projects") / f"model_stats_{_provider}.json"
+        self.model_tracker = ModelTracker(stats_file=_stats_file)
         self.token_calibrator = TokenCalibrator()
 
     def generate(
@@ -383,6 +386,8 @@ class ManuscriptEngine:
         import os
         # Use caller-supplied model; fall back to env var, then hardcoded default.
         _default_model = os.getenv("EBOOK_MANUSCRIPT_MODEL", get_config().default_model)
+        # When using a combo model (auto/*), bypass ModelTracker — combos already handle routing
+        _use_tracker = not _default_model.startswith("auto/")
 
         base_system = (
             f"You are an expert ebook writer. Tone: {tone}. Audience: {audience}.\n"
@@ -404,7 +409,7 @@ class ManuscriptEngine:
 
         intro_target = max(300, chapter.get("estimated_word_count", 2000) * 0.15)
         intro_tokens = self.token_calibrator.calibrated_tokens("intro", int(intro_target))
-        intro_model = manuscript_model or self.model_tracker.best_model("manuscript_intro", default=_default_model)
+        intro_model = manuscript_model or (self.model_tracker.best_model("manuscript_intro", default=_default_model) if _use_tracker else _default_model)
         _t0 = time.time()
         intro_prompt = (
             f"Write the opening for chapter '{title}'.\n"
@@ -432,7 +437,7 @@ class ManuscriptEngine:
         # 2. Each subchapter section
         sub_target = max(400, chapter.get("estimated_word_count", 2000) / max(len(subchapters), 1) * 0.7)
         sub_tokens = self.token_calibrator.calibrated_tokens("subchapter", int(sub_target))
-        sub_model = manuscript_model or self.model_tracker.best_model("manuscript_subchapter", default=_default_model)
+        sub_model = manuscript_model or (self.model_tracker.best_model("manuscript_subchapter", default=_default_model) if _use_tracker else _default_model)
         for sub in subchapters:
             if isinstance(sub, dict):
                 sub_title = sub.get("title", str(sub))
@@ -477,7 +482,7 @@ class ManuscriptEngine:
         # 3. Summary + transition (structured enrichment when enabled)
         outro_target = max(150, chapter.get("estimated_word_count", 2000) * 0.10)
         outro_tokens = self.token_calibrator.calibrated_tokens("outro", int(outro_target))
-        outro_model = manuscript_model or self.model_tracker.best_model("manuscript_outro", default=_default_model)
+        outro_model = manuscript_model or (self.model_tracker.best_model("manuscript_outro", default=_default_model) if _use_tracker else _default_model)
 
         if get_config().chapter_enrichment_enabled:
             enrichment_schema = {

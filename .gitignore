@@ -43,3 +43,4 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+projects/model_stats*.json

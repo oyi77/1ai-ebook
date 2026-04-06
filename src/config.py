@@ -50,6 +50,7 @@ class PipelineConfig:
     qa_max_retry_attempts: int = 3
     qa_readability_enabled: bool = True
     qa_structure_check_enabled: bool = True
+    qa_prose_quality_enabled: bool = True
     qa_post_qa_retries: int = 2
 
     # Export

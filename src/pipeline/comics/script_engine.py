@@ -114,6 +114,7 @@ Each panel: panel_id (str like "ch{chapter_num}-p<page>-pan<n>"), scene_descript
             prompt=prompt,
             system_prompt=system_prompt,
             response_schema=CHAPTER_SCHEMA,
+            max_tokens=8192,
         )
         # Ensure required keys
         if "number" not in chapter_data:
