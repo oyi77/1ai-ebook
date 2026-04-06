@@ -164,8 +164,11 @@ class OmnirouteClient:
                 )
                 content = response.choices[0].message.content
                 return self._parse_json_response(content)
-            except (json.JSONDecodeError, ValueError):
-                raise  # permanent — do not retry
+            except (json.JSONDecodeError, ValueError) as e:
+                if attempt == self.max_retries - 1:
+                    raise
+                time.sleep(1)
+                continue
             except Exception as e:
                 err_str = str(e).lower()
                 # Permanent errors: do not retry
