@@ -46,7 +46,7 @@ class CoverGenerator:
         with open(project_dir / "prompt.txt", "w") as f:
             f.write(prompt)
 
-        # Try AI image generation; fall back to HTML cover, then Pillow
+        # Try AI image generation; fall back to HTML cover (Playwright), then Pillow
         image_method = "pillow"
         try:
             image_bytes = self.ai_client.generate_image(prompt)
@@ -55,10 +55,26 @@ class CoverGenerator:
             image_method = "ai"
         except (RuntimeError, Exception) as e:
             logger.warning("AI image generation failed, falling back to HTML/Pillow cover", error=str(e))
-            html_ok = self._generate_html_cover(project_dir, title, topic, tone, product_mode)
-            if not html_ok:
-                self._generate_cover_image(project_dir, title, product_mode)
-            image_method = "html" if html_ok else "pillow"
+            # Try HTML/Playwright cover first (much higher quality)
+            try:
+                from src.cover.html_cover_generator import HTMLCoverGenerator
+                cover_path = project_dir / "cover.png"
+                html_gen = HTMLCoverGenerator()
+                html_gen.generate(
+                    title=title,
+                    subtitle="",
+                    author="AI Generated",
+                    product_mode=product_mode,
+                    output_path=cover_path,
+                )
+                logger.info("cover_generated_html", path=str(cover_path))
+                image_method = "html"
+            except Exception as html_err:
+                logger.warning("html_cover_failed_falling_back_to_pil", error=str(html_err))
+                html_ok = self._generate_html_cover(project_dir, title, topic, tone, product_mode)
+                if not html_ok:
+                    self._generate_cover_image(project_dir, title, product_mode)
+                image_method = "html_ai" if html_ok else "pillow"
 
         with open(project_dir / "brief.json", "w") as f:
             json.dump(
