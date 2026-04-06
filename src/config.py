@@ -72,6 +72,9 @@ class PipelineConfig:
     model_capability_tier: str = "medium"  # "small" | "medium" | "large"
     chapter_enrichment_enabled: bool = True
 
+    # Comics generation
+    comics_parallel_workers: int = 4
+
     # Model performance tracking
     model_success_threshold: float = 0.8  # min success rate to keep using a model
     model_min_samples: int = 5  # samples before switching

@@ -89,6 +89,10 @@ with st.form("ebook_form"):
             "how_to_guide":   "🔧 How-To Guide — Step-by-step practical",
             "textbook":       "🎓 Textbook — Educational with exercises",
             "academic_paper": "🔬 Academic Paper — APA/IMRaD structure",
+            "manga":          "🎌 Manga — Japanese, right-to-left, B&W",
+            "manhwa":         "🇰🇷 Manhwa — Korean webtoon, color, vertical scroll",
+            "manhua":         "🇨🇳 Manhua — Chinese webtoon, color",
+            "comics":         "💥 Comics — Western page format, color",
         }
 
         product_mode = st.selectbox(
@@ -137,6 +141,11 @@ with st.form("ebook_form"):
                 key="citation_style",
                 help="Citation format used throughout the paper."
             )
+
+        if product_mode in {"manga", "manhwa", "manhua", "comics"}:
+            st.slider("Pages per Chapter", min_value=4, max_value=24, value=8, key="pages_per_chapter")
+            st.selectbox("Panel Layout", ["2x2 (4 panels)", "3-panel", "4-panel-vertical", "splash"], key="panel_layout")
+            st.selectbox("Art Style", ["detailed", "simple", "chibi", "realistic"], key="art_style")
 
     with col2:
         # Sensible defaults and ranges per book type

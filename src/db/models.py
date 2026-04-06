@@ -16,6 +16,10 @@ class ProductMode(str, Enum):
     HOW_TO_GUIDE = "how_to_guide"
     TEXTBOOK = "textbook"
     ACADEMIC_PAPER = "academic_paper"
+    MANGA = "manga"
+    MANHWA = "manhwa"
+    MANHUA = "manhua"
+    COMICS = "comics"
 
 
 class ProjectStatus(str, Enum):

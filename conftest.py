@@ -1,9 +1,11 @@
+import io
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from PIL import Image
 
 
 @pytest.fixture
@@ -22,6 +24,13 @@ def mock_ai_client():
     client = MagicMock()
     client.generate_text = MagicMock(return_value="Generated text content")
     client.generate_structured = MagicMock(return_value={"key": "value"})
+
+    def _make_minimal_png(width=64, height=64):
+        img = Image.new("RGB", (width, height), color=(128, 128, 128))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+    client.generate_image = MagicMock(return_value=_make_minimal_png())
     return client
 
 

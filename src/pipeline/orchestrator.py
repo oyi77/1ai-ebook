@@ -13,6 +13,7 @@ from src.cover.cover_generator import CoverGenerator
 from src.pipeline.qa_engine import QAEngine
 from src.export.export_orchestrator import ExportOrchestrator
 from src.db.repository import ProjectRepository
+from src.pipeline.comics.comics_orchestrator import ComicsOrchestrator
 
 
 class PipelineOrchestrator:
@@ -88,6 +89,15 @@ class PipelineOrchestrator:
         project = self.repo.get_project(project_id)
         if not project:
             raise ValueError(f"Project {project_id} not found")
+
+        COMICS_MODES = {"manga", "manhwa", "manhua", "comics"}
+        if project.get("product_mode") in COMICS_MODES:
+            comics = ComicsOrchestrator(
+                db_path=self.db_path,
+                projects_dir=self.projects_dir,
+                ai_client=self.ai_client,
+            )
+            return comics.run(project_id, on_progress=on_progress)
 
         project_dir = Path(self.projects_dir) / str(project_id)
         project_dir.mkdir(parents=True, exist_ok=True)

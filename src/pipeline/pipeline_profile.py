@@ -99,6 +99,12 @@ PROFILES["academic_paper"] = PipelineProfile(
 )
 
 
+PROFILES["manga"] = PipelineProfile(product_mode="manga", is_fiction=True, genre="manga")
+PROFILES["manhwa"] = PipelineProfile(product_mode="manhwa", is_fiction=True, genre="manhwa")
+PROFILES["manhua"] = PipelineProfile(product_mode="manhua", is_fiction=True, genre="manhua")
+PROFILES["comics"] = PipelineProfile(product_mode="comics", is_fiction=True, genre="comics")
+
+
 def get_profile(product_mode: str) -> PipelineProfile:
     """Return the profile for the given product_mode, or a default profile for unknown modes."""
     return PROFILES.get(product_mode, PipelineProfile(product_mode=product_mode))
