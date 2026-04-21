@@ -6,8 +6,10 @@ import os
 import shutil
 import sqlite3
 import threading
+from collections import defaultdict
 from datetime import datetime
 from pathlib import Path
+from time import time
 from typing import Optional
 
 from fastapi import Cookie, Depends, FastAPI, Form, Header, HTTPException, Request, Response
@@ -53,11 +55,80 @@ PROJECTS_DIR = Path("projects")
 # Module-level progress store keyed by project_id
 _generation_progress: dict[int, dict] = {}
 
+# Module-level rate limit storage: (IP, endpoint_type) -> list of timestamps
+_rate_limits: dict[tuple[str, str], list[float]] = defaultdict(list)
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="AI Ebook Generator API", version="1.0")
+
+# ---------------------------------------------------------------------------
+# Rate Limiting Middleware
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    """Rate limit requests by IP address with different limits for different endpoint types."""
+    from fastapi.responses import JSONResponse
+    
+    client_ip = request.client.host if request.client else "unknown"
+    current_time = time()
+    
+    # Determine rate limit based on endpoint type
+    path = request.url.path
+    method = request.method
+    
+    # Generation endpoints: 10 requests/minute
+    generation_endpoints = [
+        "/api/projects/{project_id}/generate",
+        "/api/projects/{project_id}/strategy",
+        "/api/projects/{project_id}/outline",
+        "/api/projects/{project_id}/manuscript",
+        "/api/projects/{project_id}/qa",
+        "/api/projects/{project_id}/cover",
+    ]
+    
+    is_generation = (
+        method == "POST" and 
+        any(endpoint.replace("{project_id}", "") in path for endpoint in generation_endpoints)
+    )
+    
+    # Also treat POST /api/projects (create) as generation endpoint
+    if method == "POST" and path == "/api/projects":
+        is_generation = True
+    
+    if is_generation:
+        limit = 10
+        window = 60
+        endpoint_type = "generation"
+    else:
+        # General endpoints: 100 requests/minute
+        limit = 100
+        window = 60
+        endpoint_type = "general"
+    
+    # Use (IP, endpoint_type) as key for separate rate limit tracking
+    rate_key = (client_ip, endpoint_type)
+    
+    # Clean old timestamps outside the time window
+    _rate_limits[rate_key] = [
+        ts for ts in _rate_limits[rate_key]
+        if current_time - ts < window
+    ]
+    
+    # Check if limit exceeded
+    if len(_rate_limits[rate_key]) >= limit:
+        return JSONResponse(
+            status_code=429,
+            content={"detail": f"Rate limit exceeded: {limit} requests per minute"}
+        )
+    
+    # Record this request
+    _rate_limits[rate_key].append(current_time)
+    
+    return await call_next(request)
 
 # ---------------------------------------------------------------------------
 # Security Headers Middleware
