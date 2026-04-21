@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import Cookie, Depends, FastAPI, Form, Header, HTTPException, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -34,7 +35,13 @@ except ImportError:
 # Config
 # ---------------------------------------------------------------------------
 
-API_KEY = os.environ.get("EBOOK_API_KEY", "dev-key-change-me")
+API_KEY = os.environ.get("EBOOK_API_KEY")
+if not API_KEY:
+    raise RuntimeError(
+        "EBOOK_API_KEY environment variable must be set. "
+        "See .env.example for setup instructions."
+    )
+
 DB_PATH = Path("data/ebook_generator.db")
 PROJECTS_DIR = Path("projects")
 
@@ -46,6 +53,36 @@ _generation_progress: dict[int, dict] = {}
 # ---------------------------------------------------------------------------
 
 app = FastAPI(title="AI Ebook Generator API", version="1.0")
+
+# ---------------------------------------------------------------------------
+# Security Headers Middleware
+# ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    """Add security headers to all responses."""
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    return response
+
+# ---------------------------------------------------------------------------
+# CORS Configuration
+# ---------------------------------------------------------------------------
+
+allowed_origins = os.environ.get("ALLOWED_ORIGINS", "http://localhost:8501").split(",")
+allowed_origins = [origin.strip() for origin in allowed_origins]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 # Static files + templates
 _WEB_DIR = Path(__file__).parent.parent / "web"
@@ -499,6 +536,34 @@ def export_project(project_id: int):
     }
 
 
+def _validate_project_path(path: Path) -> Path:
+    """
+    Validate that a file path is within the PROJECTS_DIR.
+    
+    Resolves the path to absolute form (handling symlinks and ..) and ensures
+    it's contained within PROJECTS_DIR to prevent path traversal attacks.
+    
+    Args:
+        path: Path to validate
+        
+    Returns:
+        Resolved absolute path
+        
+    Raises:
+        HTTPException: 403 if path is outside PROJECTS_DIR
+    """
+    try:
+        resolved_path = path.resolve()
+        resolved_projects_dir = PROJECTS_DIR.resolve()
+        
+        if not resolved_path.is_relative_to(resolved_projects_dir):
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        return resolved_path
+    except (ValueError, OSError) as e:
+        raise HTTPException(status_code=403, detail="Access denied") from e
+
+
 @app.get("/api/projects/{project_id}/download/{fmt}")
 def download_file(
     project_id: int,
@@ -510,8 +575,11 @@ def download_file(
 
     project_dir = PROJECTS_DIR / str(project_id)
     file_path = project_dir / "exports" / f"ebook.{fmt}"
+    
+    # Validate path to prevent directory traversal attacks
+    validated_path = _validate_project_path(file_path)
 
-    if not file_path.exists():
+    if not validated_path.exists():
         raise HTTPException(status_code=404, detail=f"File {fmt} not found for project {project_id}")
 
     media_types = {
@@ -520,7 +588,7 @@ def download_file(
         "epub": "application/epub+zip",
     }
     return FileResponse(
-        path=str(file_path),
+        path=str(validated_path),
         media_type=media_types[fmt],
         filename=f"ebook-{project_id}.{fmt}",
     )
