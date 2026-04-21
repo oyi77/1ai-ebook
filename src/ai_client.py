@@ -7,6 +7,10 @@ from typing import Any, Literal
 
 from openai import OpenAI
 
+from src.logger import get_logger
+
+logger = get_logger(__name__)
+
 
 class PermanentAPIError(Exception):
     """Raised when an API error is permanent (e.g., 400, 401, 404) and should not be retried."""
@@ -107,18 +111,49 @@ class OmnirouteClient:
                 return response.choices[0].message.content
             except Exception as e:
                 err_str = str(e).lower()
-                # Permanent errors: do not retry
+                error_type = type(e).__name__
+                context = {
+                    "operation": "generate_text",
+                    "model": model,
+                    "attempt": attempt + 1,
+                    "max_retries": self.max_retries,
+                    "provider": self.provider,
+                }
+                
                 if any(
                     code in err_str
                     for code in ("400", "401", "403", "404", "invalid_request")
                 ):
+                    logger.error(
+                        "Permanent API error, not retrying",
+                        error=str(e),
+                        error_type=error_type,
+                        context=context,
+                        severity="error"
+                    )
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
+                
                 if attempt == self.max_retries - 1:
+                    logger.error(
+                        "AI text generation failed after all retries",
+                        error=str(e),
+                        error_type=error_type,
+                        context=context,
+                        severity="error"
+                    )
                     raise
+                
                 wait_time = (2**attempt) + random.uniform(0, 1)
-                # Rate limit: longer backoff
                 if "429" in err_str:
                     wait_time *= 2
+                
+                logger.warning(
+                    "AI text generation failed, retrying",
+                    error=str(e),
+                    error_type=error_type,
+                    context={**context, "wait_time": wait_time},
+                    severity="warning"
+                )
                 time.sleep(wait_time)
         return ""
 
@@ -165,24 +200,79 @@ class OmnirouteClient:
                 content = response.choices[0].message.content
                 return self._parse_json_response(content)
             except (json.JSONDecodeError, ValueError) as e:
+                error_type = type(e).__name__
+                context = {
+                    "operation": "generate_structured",
+                    "model": model,
+                    "attempt": attempt + 1,
+                    "max_retries": self.max_retries,
+                    "provider": self.provider,
+                }
+                
                 if attempt == self.max_retries - 1:
+                    logger.error(
+                        "JSON parsing failed after all retries",
+                        error=str(e),
+                        error_type=error_type,
+                        context=context,
+                        severity="error"
+                    )
                     raise
+                
+                logger.warning(
+                    "JSON parsing failed, retrying",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="warning"
+                )
                 time.sleep(1)
                 continue
             except Exception as e:
                 err_str = str(e).lower()
-                # Permanent errors: do not retry
+                error_type = type(e).__name__
+                context = {
+                    "operation": "generate_structured",
+                    "model": model,
+                    "attempt": attempt + 1,
+                    "max_retries": self.max_retries,
+                    "provider": self.provider,
+                }
+                
                 if any(
                     code in err_str
                     for code in ("400", "401", "403", "404", "invalid_request")
                 ):
+                    logger.error(
+                        "Permanent API error, not retrying",
+                        error=str(e),
+                        error_type=error_type,
+                        context=context,
+                        severity="error"
+                    )
                     raise PermanentAPIError(f"Permanent API error: {e}") from e
+                
                 if attempt == self.max_retries - 1:
+                    logger.error(
+                        "AI structured generation failed after all retries",
+                        error=str(e),
+                        error_type=error_type,
+                        context=context,
+                        severity="error"
+                    )
                     raise
+                
                 wait_time = (2**attempt) + random.uniform(0, 1)
-                # Rate limit: longer backoff
                 if "429" in err_str:
                     wait_time *= 2
+                
+                logger.warning(
+                    "AI structured generation failed, retrying",
+                    error=str(e),
+                    error_type=error_type,
+                    context={**context, "wait_time": wait_time},
+                    severity="warning"
+                )
                 time.sleep(wait_time)
         return {}
 
@@ -206,11 +296,33 @@ class OmnirouteClient:
             return base64.b64decode(response.data[0].b64_json)
         except Exception as e:
             err_str = str(e).lower()
-            type_name = type(e).__name__
+            error_type = type(e).__name__
+            context = {
+                "operation": "generate_image",
+                "model": model,
+                "size": size,
+                "provider": self.provider,
+            }
+            
             if (
                 "404" in err_str
                 or "not found" in err_str
-                or type_name in ("NotFoundError", "APIStatusError")
+                or error_type in ("NotFoundError", "APIStatusError")
             ):
                 self._supports_images = False
+                logger.warning(
+                    "Image generation not supported by provider",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="warning"
+                )
+            else:
+                logger.error(
+                    "Image generation failed",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="error"
+                )
             raise RuntimeError(f"Image generation unavailable: {e}") from e

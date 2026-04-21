@@ -1,6 +1,7 @@
 from __future__ import annotations
 import logging
 import os
+import uuid
 import structlog
 
 
@@ -47,3 +48,18 @@ def setup_logging(level: str = "INFO") -> None:
 def get_logger(name: str | None = None) -> structlog.stdlib.BoundLogger:
     """Get a logger instance."""
     return structlog.get_logger(name)
+
+
+def generate_correlation_id() -> str:
+    """Generate a unique correlation ID for request tracing."""
+    return str(uuid.uuid4())
+
+
+def bind_correlation_id(correlation_id: str) -> None:
+    """Bind correlation ID to the current context for all subsequent logs."""
+    structlog.contextvars.bind_contextvars(correlation_id=correlation_id)
+
+
+def clear_correlation_id() -> None:
+    """Clear correlation ID from the current context."""
+    structlog.contextvars.clear_contextvars()

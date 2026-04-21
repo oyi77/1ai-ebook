@@ -111,6 +111,19 @@ class PipelineOrchestrator:
         try:
             return self._run_pipeline(project_id, project, project_dir, on_progress, manuscript_model, quality_level)
         except Exception as exc:
+            error_type = type(exc).__name__
+            context = {
+                "operation": "run_full_pipeline",
+                "project_id": project_id,
+                "project_title": project.get("title", ""),
+            }
+            logger.error(
+                "Pipeline execution failed",
+                error=str(exc),
+                error_type=error_type,
+                context=context,
+                severity="error"
+            )
             self.repo.update_project_status(project_id, "failed")
             if on_progress:
                 on_progress(0, f"Pipeline failed: {exc}")
@@ -126,7 +139,18 @@ class PipelineOrchestrator:
                 if integ_id:
                     mgr.invoke_webhook(integ_id, event, payload)
         except Exception as e:
-            logger.info("Webhook event skipped", event=event, error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "fire_webhook_event",
+                "event": event,
+            }
+            logger.info(
+                "Webhook event skipped",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="info"
+            )
 
     def _extract_failing_chapters(self, qa_report: dict) -> list:
         """Extract (chapter_idx, failure_context) pairs from QA report issues."""
@@ -363,7 +387,18 @@ class PipelineOrchestrator:
             )
             result["marketing_kit"] = marketing_kit
         except Exception as e:
-            logger.warning("Marketing kit generation failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "marketing_kit_generation",
+                "project_id": project_id,
+            }
+            logger.warning(
+                "Marketing kit generation failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
 
         self.repo.update_project_status(project_id, "completed")
 

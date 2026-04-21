@@ -66,7 +66,18 @@ class ExportOrchestrator:
             path_str = str(result) if result else (str(docx_path) if docx_path.exists() else None)
             return {"status": "success", "path": path_str, "error": None}
         except Exception as e:
-            logger.warning("DOCX generation failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "docx_generation",
+                "project_id": project_id,
+            }
+            logger.warning(
+                "DOCX generation failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             return {"status": "failed", "path": None, "error": str(e)}
 
     def _generate_epub(self, project_id: int, project_dir: Path) -> dict:
@@ -83,7 +94,18 @@ class ExportOrchestrator:
             path_str = str(epub_path) if epub_path else str(project_dir / "exports" / "ebook.epub")
             return {"status": "success", "path": path_str, "error": None}
         except Exception as e:
-            logger.warning("EPUB generation failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "epub_generation",
+                "project_id": project_id,
+            }
+            logger.warning(
+                "EPUB generation failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             return {"status": "failed", "path": None, "error": str(e)}
 
     def _generate_pdf(self, project_dir: Path) -> dict:
@@ -99,11 +121,41 @@ class ExportOrchestrator:
             path_str = str(pdf_path) if pdf_path.exists() else None
             return {"status": "success", "path": path_str, "error": None}
         except RuntimeError as e:
+            error_type = type(e).__name__
+            context = {
+                "operation": "pdf_conversion",
+                "docx_file": str(docx_file),
+            }
             if "LibreOffice not found" in str(e):
-                logger.info("LibreOffice not found, skipping PDF conversion", error=str(e))
+                logger.info(
+                    "LibreOffice not found, skipping PDF conversion",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="info"
+                )
+            else:
+                logger.warning(
+                    "PDF conversion failed",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="warning"
+                )
             return {"status": "failed", "path": None, "error": str(e)}
         except Exception as e:
-            logger.warning("PDF generation failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "pdf_conversion",
+                "docx_file": str(docx_file),
+            }
+            logger.warning(
+                "PDF generation failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             return {"status": "failed", "path": None, "error": str(e)}
 
     def _create_manifest(self, project_id: int, exports_dir: Path, format_results: dict | None = None) -> None:

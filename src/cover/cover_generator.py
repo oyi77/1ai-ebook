@@ -37,7 +37,19 @@ class CoverGenerator:
         try:
             prompt = self.generate_prompt(title, topic, tone, product_mode)
         except Exception as e:
-            logger.warning("Cover prompt generation failed, using fallback", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "cover_prompt_generation",
+                "project_id": project_id,
+                "title": title,
+            }
+            logger.warning(
+                "Cover prompt generation failed, using fallback",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             prompt = f"A professional ebook cover for '{title}'. Clean, modern design."
 
         project_dir = self.projects_dir / str(project_id) / "cover"
@@ -54,8 +66,19 @@ class CoverGenerator:
                 f.write(image_bytes)
             image_method = "ai"
         except (RuntimeError, Exception) as e:
-            logger.warning("AI image generation failed, falling back to HTML/Pillow cover", error=str(e))
-            # Try HTML/Playwright cover first (much higher quality)
+            error_type = type(e).__name__
+            context = {
+                "operation": "ai_image_generation",
+                "project_id": project_id,
+                "title": title,
+            }
+            logger.warning(
+                "AI image generation failed, falling back to HTML/Pillow cover",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             try:
                 from src.cover.html_cover_generator import HTMLCoverGenerator
                 cover_path = project_dir / "cover.png"
@@ -70,7 +93,19 @@ class CoverGenerator:
                 logger.info("cover_generated_html", path=str(cover_path))
                 image_method = "html"
             except Exception as html_err:
-                logger.warning("html_cover_failed_falling_back_to_pil", error=str(html_err))
+                error_type_html = type(html_err).__name__
+                context_html = {
+                    "operation": "html_cover_generation",
+                    "project_id": project_id,
+                    "title": title,
+                }
+                logger.warning(
+                    "HTML cover generation failed, falling back to Pillow",
+                    error=str(html_err),
+                    error_type=error_type_html,
+                    context=context_html,
+                    severity="warning"
+                )
                 html_ok = self._generate_html_cover(project_dir, title, topic, tone, product_mode)
                 if not html_ok:
                     self._generate_cover_image(project_dir, title, product_mode)
@@ -148,7 +183,18 @@ Return only the description, no explanations."""
                 temperature=0.7,
             )
         except Exception as e:
-            logger.warning("HTML cover AI generation failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "html_cover_ai_generation",
+                "title": title,
+            }
+            logger.warning(
+                "HTML cover AI generation failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="warning"
+            )
             return False
 
         html_path = project_dir / "cover.html"
@@ -169,7 +215,18 @@ Return only the description, no explanations."""
                 browser.close()
             return True
         except Exception as e:
-            logger.info("Playwright cover render failed, trying weasyprint", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "playwright_cover_render",
+                "title": title,
+            }
+            logger.info(
+                "Playwright cover render failed, trying weasyprint",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="info"
+            )
 
         # Try weasyprint as fallback
         try:
@@ -177,7 +234,18 @@ Return only the description, no explanations."""
             weasyprint.HTML(string=html).write_png(str(project_dir / "cover.png"))
             return True
         except Exception as e:
-            logger.info("Weasyprint cover render failed", error=str(e))
+            error_type = type(e).__name__
+            context = {
+                "operation": "weasyprint_cover_render",
+                "title": title,
+            }
+            logger.info(
+                "Weasyprint cover render failed",
+                error=str(e),
+                error_type=error_type,
+                context=context,
+                severity="info"
+            )
 
         return False
 

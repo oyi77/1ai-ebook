@@ -24,13 +24,16 @@ from src.models.validation import ProjectInput
 from src.pipeline.error_classifier import ErrorClassifier
 
 try:
-    from src.logger import get_logger, setup_logging
+    from src.logger import bind_correlation_id, clear_correlation_id, generate_correlation_id, get_logger, setup_logging
     setup_logging()
     logger = get_logger(__name__)
 except ImportError:
     import logging
     logging.basicConfig()
     logger = logging.getLogger(__name__)
+    def bind_correlation_id(cid): pass
+    def clear_correlation_id(): pass
+    def generate_correlation_id(): return "no-correlation-id"
 
 # ---------------------------------------------------------------------------
 # Config
@@ -58,6 +61,18 @@ app = FastAPI(title="AI Ebook Generator API", version="1.0")
 # ---------------------------------------------------------------------------
 # Security Headers Middleware
 # ---------------------------------------------------------------------------
+
+@app.middleware("http")
+async def add_correlation_id(request: Request, call_next):
+    """Add correlation ID to request context for tracing."""
+    correlation_id = request.headers.get("X-Correlation-ID") or generate_correlation_id()
+    bind_correlation_id(correlation_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Correlation-ID"] = correlation_id
+        return response
+    finally:
+        clear_correlation_id()
 
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -140,7 +155,17 @@ def _check_admin(admin_session: str | None) -> bool:
         val, sig = admin_session.rsplit(".", 1)
         return hmac.compare_digest(sig, _sign(val))
     except Exception as e:
-        logger.warning("Admin session check failed", error=str(e))
+        error_type = type(e).__name__
+        context = {
+            "operation": "admin_session_check",
+        }
+        logger.warning(
+            "Admin session check failed",
+            error=str(e),
+            error_type=error_type,
+            context=context,
+            severity="warning"
+        )
         return False
 
 
@@ -449,6 +474,18 @@ def generate_project(
                 "message": "Complete!",
             }
         except Exception as exc:
+            error_type = type(exc).__name__
+            context = {
+                "operation": "pipeline_generation",
+                "project_id": project_id,
+            }
+            logger.error(
+                "Pipeline generation failed",
+                error=str(exc),
+                error_type=error_type,
+                context=context,
+                severity="error"
+            )
             _generation_progress[project_id] = {
                 "status": "failed",
                 "progress": 0,
@@ -564,6 +601,18 @@ def _validate_project_path(path: Path) -> Path:
         
         return resolved_path
     except (ValueError, OSError) as e:
+        error_type = type(e).__name__
+        context = {
+            "operation": "validate_project_path",
+            "path": str(path),
+        }
+        logger.warning(
+            "Path validation failed",
+            error=str(e),
+            error_type=error_type,
+            context=context,
+            severity="warning"
+        )
         raise HTTPException(status_code=403, detail="Access denied") from e
 
 

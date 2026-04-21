@@ -43,7 +43,18 @@ class IntegrationManager:
                     ig = Integration(**item)
                     self._integrations[ig.id] = ig
             except Exception as e:
-                logger.info("Failed to load integrations config, resetting", error=str(e))
+                error_type = type(e).__name__
+                context = {
+                    "operation": "load_integrations_config",
+                    "config_file": str(self.config_file),
+                }
+                logger.info(
+                    "Failed to load integrations config, resetting",
+                    error=str(e),
+                    error_type=error_type,
+                    context=context,
+                    severity="info"
+                )
                 self._integrations = {}
 
     def _save(self) -> None:
