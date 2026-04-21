@@ -17,6 +17,9 @@ def tmp_db(tmp_path, monkeypatch):
     projects_dir = tmp_path / "projects"
     projects_dir.mkdir()
 
+    # Set EBOOK_API_KEY before importing server module
+    monkeypatch.setenv("EBOOK_API_KEY", "test-secure-key-12345")
+
     # Patch module-level paths in server before importing app
     import src.api.server as server_mod
     monkeypatch.setattr(server_mod, "DB_PATH", db_file)
@@ -33,8 +36,10 @@ def client(tmp_db):
 
 
 @pytest.fixture()
-def authed_headers():
-    return {"X-API-Key": "dev-key-change-me"}
+def authed_headers(monkeypatch):
+    test_key = "test-secure-key-12345"
+    monkeypatch.setenv("EBOOK_API_KEY", test_key)
+    return {"X-API-Key": test_key}
 
 
 # ---------------------------------------------------------------------------
@@ -134,3 +139,33 @@ def test_download_not_found(client, authed_headers):
         headers=authed_headers,
     )
     assert resp.status_code == 404
+
+
+def test_api_key_required_on_startup(monkeypatch):
+    """Verify that server fails to start without EBOOK_API_KEY env var."""
+    # Remove EBOOK_API_KEY from environment
+    monkeypatch.delenv("EBOOK_API_KEY", raising=False)
+    
+    # Reload the server module to trigger the validation check
+    import sys
+    if "src.api.server" in sys.modules:
+        del sys.modules["src.api.server"]
+    
+    # Attempting to import should raise RuntimeError
+    with pytest.raises(RuntimeError, match="EBOOK_API_KEY environment variable must be set"):
+        import src.api.server  # noqa: F401
+
+
+def test_api_key_set_allows_startup(monkeypatch):
+    """Verify that server starts successfully when EBOOK_API_KEY is set."""
+    # Set a valid API key
+    monkeypatch.setenv("EBOOK_API_KEY", "test-secure-key-12345")
+    
+    # Reload the server module
+    import sys
+    if "src.api.server" in sys.modules:
+        del sys.modules["src.api.server"]
+    
+    # Should import without error
+    import src.api.server as server_mod
+    assert server_mod.API_KEY == "test-secure-key-12345"
