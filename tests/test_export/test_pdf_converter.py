@@ -181,7 +181,7 @@ def test_invalid_file_extension_rejected(temp_project_dir):
 
     converter = PdfConverter(libreoffice_path="/usr/bin/libreoffice", projects_dir=temp_project_dir)
 
-    with pytest.raises(ValueError, match="File must have .docx extension"):
+    with pytest.raises(ValueError, match="File must have one of these extensions"):
         converter.convert(txt_file)
 
 

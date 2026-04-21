@@ -2,6 +2,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from src.utils.path_validator import PathValidator
+
 
 class PdfConverter:
     def __init__(self, libreoffice_path: str | None = None, projects_dir: Path | str = "projects"):
@@ -16,23 +18,20 @@ class PdfConverter:
     def convert(self, docx_file: Path | str) -> dict:
         docx_file = Path(docx_file)
 
-        # Validate file path to prevent command injection
+        validator = PathValidator(self.projects_dir)
+        
         try:
-            resolved_path = docx_file.resolve()
-            resolved_projects_dir = self.projects_dir.resolve()
-            
-            if not resolved_path.is_relative_to(resolved_projects_dir):
-                raise ValueError(f"File path must be within projects directory: {docx_file}")
-        except (ValueError, OSError) as e:
+            resolved_path = validator.validate_project_path(docx_file)
+        except ValueError as e:
             raise ValueError(f"Invalid file path: {docx_file}") from e
         
-        # Validate file exists
         if not resolved_path.exists():
             raise ValueError(f"File does not exist: {docx_file}")
         
-        # Validate file extension
-        if resolved_path.suffix.lower() != ".docx":
-            raise ValueError(f"File must have .docx extension, got: {resolved_path.suffix}")
+        try:
+            validator.validate_file_extension(resolved_path, {".docx"})
+        except ValueError as e:
+            raise ValueError(str(e)) from e
 
         if not self.libreoffice_path:
             raise RuntimeError("LibreOffice not found. Please install libreoffice.")

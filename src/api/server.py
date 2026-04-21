@@ -22,6 +22,7 @@ from src.db.repository import ProjectRepository
 from src.db.schema import create_tables
 from src.models.validation import ProjectInput
 from src.pipeline.error_classifier import ErrorClassifier
+from src.utils.path_validator import PathValidator
 
 try:
     from src.logger import bind_correlation_id, clear_correlation_id, generate_correlation_id, get_logger, setup_logging
@@ -593,14 +594,9 @@ def _validate_project_path(path: Path) -> Path:
         HTTPException: 403 if path is outside PROJECTS_DIR
     """
     try:
-        resolved_path = path.resolve()
-        resolved_projects_dir = PROJECTS_DIR.resolve()
-        
-        if not resolved_path.is_relative_to(resolved_projects_dir):
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        return resolved_path
-    except (ValueError, OSError) as e:
+        validator = PathValidator(PROJECTS_DIR)
+        return validator.validate_project_path(path)
+    except ValueError as e:
         error_type = type(e).__name__
         context = {
             "operation": "validate_project_path",
