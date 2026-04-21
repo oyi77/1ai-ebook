@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "lastScanned": 1775328949485,
+  "lastScanned": 1775418221945,
   "projectRoot": "/home/openclaw/projects/1ai-ebook",
   "techStack": {
     "languages": [
@@ -53,7 +53,7 @@
       "path": "__pycache__",
       "purpose": null,
       "fileCount": 3,
-      "lastAccessed": 1775328949478,
+      "lastAccessed": 1775418221936,
       "keyFiles": [
         "conftest.cpython-313-pytest-7.4.4.pyc",
         "conftest.cpython-313.pyc",
@@ -64,7 +64,7 @@
       "path": "app",
       "purpose": "Application code",
       "fileCount": 3,
-      "lastAccessed": 1775328949480,
+      "lastAccessed": 1775418221937,
       "keyFiles": [
         "AGENTS.md",
         "__init__.py",
@@ -75,7 +75,7 @@
       "path": "data",
       "purpose": "Data files",
       "fileCount": 2,
-      "lastAccessed": 1775328949482,
+      "lastAccessed": 1775418221938,
       "keyFiles": [
         "ebook_generator.db",
         "ebooks.db"
@@ -85,7 +85,7 @@
       "path": "docker",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775328949483,
+      "lastAccessed": 1775418221939,
       "keyFiles": [
         "AGENTS.md",
         "entrypoint.sh"
@@ -95,7 +95,7 @@
       "path": "projects",
       "purpose": null,
       "fileCount": 2,
-      "lastAccessed": 1775328949483,
+      "lastAccessed": 1775418221943,
       "keyFiles": [
         "model_stats.json",
         "token_calibration.json"
@@ -104,21 +104,21 @@
     "src": {
       "path": "src",
       "purpose": "Source code",
-      "fileCount": 5,
-      "lastAccessed": 1775328949483,
+      "fileCount": 6,
+      "lastAccessed": 1775418221943,
       "keyFiles": [
         "AGENTS.md",
         "__init__.py",
         "ai_client.py",
         "config.py",
-        "utils.py"
+        "logger.py"
       ]
     },
     "tests": {
       "path": "tests",
       "purpose": "Test files",
-      "fileCount": 5,
-      "lastAccessed": 1775328949484,
+      "fileCount": 6,
+      "lastAccessed": 1775418221943,
       "keyFiles": [
         "AGENTS.md",
         "__init__.py",
@@ -131,7 +131,7 @@
       "path": "app/pages",
       "purpose": "Page components",
       "fileCount": 8,
-      "lastAccessed": 1775328949484,
+      "lastAccessed": 1775418221943,
       "keyFiles": [
         "1_Idea_Research.py",
         "2_Create_Ebook.py",
@@ -142,7 +142,7 @@
       "path": "app/utils",
       "purpose": "Utility functions",
       "fileCount": 2,
-      "lastAccessed": 1775328949484,
+      "lastAccessed": 1775418221944,
       "keyFiles": [
         "__init__.py",
         "mobile_css.py"
@@ -152,7 +152,7 @@
       "path": "src/api",
       "purpose": "API routes",
       "fileCount": 2,
-      "lastAccessed": 1775328949484,
+      "lastAccessed": 1775418221944,
       "keyFiles": [
         "__init__.py",
         "server.py"
@@ -162,302 +162,212 @@
   "hotPaths": [
     {
       "path": "src/pipeline/manuscript_engine.py",
-      "accessCount": 81,
-      "lastAccessed": 1775415585680,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline/qa_engine.py",
-      "accessCount": 57,
-      "lastAccessed": 1775415975248,
-      "type": "file"
-    },
-    {
-      "path": "",
-      "accessCount": 50,
-      "lastAccessed": 1775415979653,
-      "type": "directory"
-    },
-    {
-      "path": "src/ai_client.py",
-      "accessCount": 42,
-      "lastAccessed": 1775415433521,
-      "type": "file"
-    },
-    {
-      "path": "src/cover/cover_generator.py",
-      "accessCount": 35,
-      "lastAccessed": 1775335508831,
-      "type": "file"
-    },
-    {
-      "path": "src/export/docx_generator.py",
-      "accessCount": 35,
-      "lastAccessed": 1775411385240,
-      "type": "file"
-    },
-    {
-      "path": "src/export/export_orchestrator.py",
-      "accessCount": 28,
-      "lastAccessed": 1775412095582,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline/strategy_planner.py",
-      "accessCount": 25,
-      "lastAccessed": 1775416642461,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline/intake.py",
-      "accessCount": 23,
-      "lastAccessed": 1775286783106,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline/outline_generator.py",
-      "accessCount": 20,
-      "lastAccessed": 1775411385090,
-      "type": "file"
-    },
-    {
-      "path": "src/db/repository.py",
-      "accessCount": 20,
-      "lastAccessed": 1775415438103,
-      "type": "file"
-    },
-    {
-      "path": "src",
-      "accessCount": 18,
-      "lastAccessed": 1775415294822,
-      "type": "directory"
-    },
-    {
-      "path": "src/db/models.py",
-      "accessCount": 16,
-      "lastAccessed": 1775416604929,
-      "type": "file"
-    },
-    {
-      "path": "src/db/schema.py",
-      "accessCount": 13,
-      "lastAccessed": 1775335953807,
-      "type": "file"
-    },
-    {
-      "path": "tests/integration/test_full_pipeline.py",
-      "accessCount": 12,
-      "lastAccessed": 1775415982594,
-      "type": "file"
-    },
-    {
-      "path": "src/export/file_manager.py",
       "accessCount": 9,
-      "lastAccessed": 1775231806615,
+      "lastAccessed": 1775513479080,
+      "type": "file"
+    },
+    {
+      "path": "src/api/server.py",
+      "accessCount": 8,
+      "lastAccessed": 1775508118359,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/orchestrator.py",
+      "accessCount": 7,
+      "lastAccessed": 1775512566230,
+      "type": "file"
+    },
+    {
+      "path": "src/config.py",
+      "accessCount": 5,
+      "lastAccessed": 1775508976295,
       "type": "file"
     },
     {
       "path": "conftest.py",
-      "accessCount": 8,
-      "lastAccessed": 1775415441072,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_export/test_docx_generator.py",
-      "accessCount": 7,
-      "lastAccessed": 1775335971112,
-      "type": "file"
-    },
-    {
-      "path": "src/export/pdf_converter.py",
-      "accessCount": 7,
-      "lastAccessed": 1775411385608,
-      "type": "file"
-    },
-    {
-      "path": "src/pipeline/content_safety.py",
-      "accessCount": 7,
-      "lastAccessed": 1775411895935,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_pipeline/test_qa_engine.py",
-      "accessCount": 7,
-      "lastAccessed": 1775415983044,
-      "type": "file"
-    },
-    {
-      "path": ".env.example",
-      "accessCount": 6,
-      "lastAccessed": 1775286750702,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_pipeline/test_manuscript_engine.py",
-      "accessCount": 6,
-      "lastAccessed": 1775411388431,
-      "type": "file"
-    },
-    {
-      "path": "src/jobs/queue.py",
-      "accessCount": 5,
-      "lastAccessed": 1775329644176,
-      "type": "file"
-    },
-    {
-      "path": "pyproject.toml",
       "accessCount": 4,
-      "lastAccessed": 1775232162025,
+      "lastAccessed": 1775418532437,
       "type": "file"
     },
     {
-      "path": "src/db/database.py",
+      "path": "test_all_modes.py",
       "accessCount": 4,
-      "lastAccessed": 1775335589814,
+      "lastAccessed": 1775503698176,
       "type": "file"
     },
     {
-      "path": "src/pipeline",
+      "path": "src/web/templates/admin/settings.html",
+      "accessCount": 4,
+      "lastAccessed": 1775508150038,
+      "type": "file"
+    },
+    {
+      "path": "app/pages/2_Create_Ebook.py",
       "accessCount": 3,
-      "lastAccessed": 1775411381778,
-      "type": "directory"
+      "lastAccessed": 1775418736636,
+      "type": "file"
     },
     {
-      "path": "pytest.ini",
+      "path": "src/db/models.py",
+      "accessCount": 3,
+      "lastAccessed": 1775491258555,
+      "type": "file"
+    },
+    {
+      "path": "src/cover/templates/academic.html.j2",
+      "accessCount": 3,
+      "lastAccessed": 1775491468524,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/comics/script_engine.py",
+      "accessCount": 3,
+      "lastAccessed": 1775493838628,
+      "type": "file"
+    },
+    {
+      "path": "src/pipeline/qa_engine.py",
+      "accessCount": 3,
+      "lastAccessed": 1775508984103,
+      "type": "file"
+    },
+    {
+      "path": "config.json",
+      "accessCount": 3,
+      "lastAccessed": 1775508988564,
+      "type": "file"
+    },
+    {
+      "path": "requirements.txt",
       "accessCount": 2,
-      "lastAccessed": 1775215985359,
+      "lastAccessed": 1775418526984,
       "type": "file"
     },
     {
-      "path": "CLAUDE.md",
+      "path": "src/pipeline/pipeline_profile.py",
       "accessCount": 2,
-      "lastAccessed": 1775232167167,
+      "lastAccessed": 1775418717908,
       "type": "file"
     },
     {
-      "path": "AGENTS.md",
+      "path": "src/ai_client.py",
       "accessCount": 2,
-      "lastAccessed": 1775232191676,
+      "lastAccessed": 1775452808662,
       "type": "file"
     },
     {
-      "path": "tests/test_pipeline/test_strategy_planner.py",
+      "path": "src/cover/cover_generator.py",
       "accessCount": 2,
-      "lastAccessed": 1775335742697,
+      "lastAccessed": 1775491330073,
       "type": "file"
     },
     {
-      "path": "app/__init__.py",
-      "accessCount": 1,
-      "lastAccessed": 1775213847248,
+      "path": "src/cover/html_cover_generator.py",
+      "accessCount": 2,
+      "lastAccessed": 1775491343891,
       "type": "file"
     },
     {
-      "path": "docker/entrypoint.sh",
+      "path": "src/pipeline/comics/character_sheet.py",
       "accessCount": 1,
-      "lastAccessed": 1775213847586,
+      "lastAccessed": 1775418547545,
       "type": "file"
     },
     {
-      "path": "src/AGENTS.md",
+      "path": "src/pipeline/comics/page_composer.py",
       "accessCount": 1,
-      "lastAccessed": 1775213893398,
+      "lastAccessed": 1775418566464,
       "type": "file"
     },
     {
-      "path": "tests/AGENTS.md",
+      "path": "src/pipeline/comics/panel_art_generator.py",
       "accessCount": 1,
-      "lastAccessed": 1775213901483,
+      "lastAccessed": 1775418599073,
       "type": "file"
     },
     {
-      "path": "app/AGENTS.md",
+      "path": "src/pipeline/comics/comics_orchestrator.py",
       "accessCount": 1,
-      "lastAccessed": 1775213907866,
+      "lastAccessed": 1775418625844,
       "type": "file"
     },
     {
-      "path": "docker/AGENTS.md",
+      "path": "src/export/comics_exporter.py",
       "accessCount": 1,
-      "lastAccessed": 1775213911960,
+      "lastAccessed": 1775418635257,
       "type": "file"
     },
     {
-      "path": "src/db/AGENTS.md",
+      "path": "tests/test_pipeline/comics/test_character_sheet.py",
       "accessCount": 1,
-      "lastAccessed": 1775213926965,
+      "lastAccessed": 1775418645491,
       "type": "file"
     },
     {
-      "path": "src/pipeline/AGENTS.md",
+      "path": "tests/test_pipeline/comics/test_page_composer.py",
       "accessCount": 1,
-      "lastAccessed": 1775213941785,
+      "lastAccessed": 1775418662166,
       "type": "file"
     },
     {
-      "path": "src/jobs/AGENTS.md",
+      "path": "tests/test_pipeline/comics/test_script_engine.py",
       "accessCount": 1,
-      "lastAccessed": 1775213950916,
+      "lastAccessed": 1775418671963,
       "type": "file"
     },
     {
-      "path": "src/cover/AGENTS.md",
+      "path": "tests/test_pipeline/comics/test_panel_art_generator.py",
       "accessCount": 1,
-      "lastAccessed": 1775213959074,
+      "lastAccessed": 1775418686363,
       "type": "file"
     },
     {
-      "path": "src/export/AGENTS.md",
+      "path": "tests/test_export/test_comics_exporter.py",
       "accessCount": 1,
-      "lastAccessed": 1775213969433,
+      "lastAccessed": 1775418694655,
       "type": "file"
     },
     {
-      "path": "tests/test_db/AGENTS.md",
+      "path": "tests/test_e2e_comics.py",
       "accessCount": 1,
-      "lastAccessed": 1775213972877,
+      "lastAccessed": 1775418707866,
       "type": "file"
     },
     {
-      "path": "tests/test_pipeline/AGENTS.md",
+      "path": "src/cover/templates/base.html.j2",
       "accessCount": 1,
-      "lastAccessed": 1775213979450,
+      "lastAccessed": 1775491273765,
       "type": "file"
     },
     {
-      "path": "tests/test_jobs/AGENTS.md",
+      "path": "src/cover/templates/nonfiction.html.j2",
       "accessCount": 1,
-      "lastAccessed": 1775213983338,
+      "lastAccessed": 1775491275522,
       "type": "file"
     },
     {
-      "path": "tests/test_cover/AGENTS.md",
+      "path": "src/cover/templates/fiction.html.j2",
       "accessCount": 1,
-      "lastAccessed": 1775213986899,
+      "lastAccessed": 1775491282722,
       "type": "file"
     },
     {
-      "path": "tests/test_export/AGENTS.md",
+      "path": "src/cover/templates/comics.html.j2",
       "accessCount": 1,
-      "lastAccessed": 1775213991747,
+      "lastAccessed": 1775491300874,
       "type": "file"
     },
     {
-      "path": "tests/integration/AGENTS.md",
+      "path": "src/pipeline/model_tracker.py",
       "accessCount": 1,
-      "lastAccessed": 1775213996527,
+      "lastAccessed": 1775496498418,
       "type": "file"
     },
     {
-      "path": "app/pages/AGENTS.md",
+      "path": "src/web/templates/landing.html",
       "accessCount": 1,
-      "lastAccessed": 1775214004399,
-      "type": "file"
-    },
-    {
-      "path": "tests/test_pipeline/test_outline_generator.py",
-      "accessCount": 1,
-      "lastAccessed": 1775214252562,
+      "lastAccessed": 1775508049140,
       "type": "file"
     }
   ],

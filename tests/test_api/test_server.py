@@ -73,10 +73,9 @@ def test_create_project(client, authed_headers):
         "/api/projects",
         json={
             "title": "My Ebook",
-            "idea": "A practical guide to machine learning",
-            "product_mode": "lead_magnet",
-            "target_language": "en",
-            "chapter_count": 5,
+            "idea": "A book about AI and machine learning",
+            "chapter_count": 10,
+            "target_language": "en"
         },
         headers=authed_headers,
     )
@@ -90,7 +89,12 @@ def test_get_project(client, authed_headers):
     # Create first
     create_resp = client.post(
         "/api/projects",
-        json={"title": "Get Test", "idea": "Testing retrieval"},
+        json={
+            "title": "Get Test",
+            "idea": "Testing retrieval of project data",
+            "chapter_count": 5,
+            "target_language": "en"
+        },
         headers=authed_headers,
     )
     assert create_resp.status_code == 200
@@ -108,7 +112,12 @@ def test_export_endpoint(client, authed_headers):
     # Create a project
     create_resp = client.post(
         "/api/projects",
-        json={"title": "Export Test", "idea": "Export data for adforge"},
+        json={
+            "title": "Export Test",
+            "idea": "Export data for adforge integration",
+            "chapter_count": 8,
+            "target_language": "en"
+        },
         headers=authed_headers,
     )
     assert create_resp.status_code == 200

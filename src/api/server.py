@@ -118,8 +118,14 @@ def _get_available_models() -> list[str]:
             conn.close()
             if rows:
                 return [r[0] for r in rows]
-        except Exception:
-            pass
+        except (sqlite3.Error, OSError, PermissionError) as e:
+            logger.warning(
+                "Failed to read OmniRoute DB, using fallback models",
+                db_path=str(_OMNIROUTE_DB),
+                error_type=type(e).__name__,
+                error=str(e),
+                operation="read_combos"
+            )
     return OMNIROUTE_COMBOS_FREE + OMNIROUTE_COMBOS_PAID
 
 
