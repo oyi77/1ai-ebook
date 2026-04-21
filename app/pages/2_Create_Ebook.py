@@ -1,23 +1,13 @@
 import os
-import streamlit as st
-from pathlib import Path
-import sys
 import sqlite3
-import threading
-import time
+from pathlib import Path
+
 import requests
+import streamlit as st
+from pydantic import ValidationError
 
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-st.set_page_config(page_title="Create Ebook", page_icon="✍️", layout="wide")
-
-from utils.mobile_css import inject_mobile_css
-inject_mobile_css()
-
-st.title("✍️ Create Ebook")
-st.markdown("Fill in your ebook details and let AI do the writing")
-
+from src.db.schema import create_tables
+from src.models.validation import ProjectInput
 from src.pipeline.intake import ProjectIntake
 from src.pipeline.orchestrator import PipelineOrchestrator
 from src.pipeline.error_classifier import ErrorClassifier
@@ -210,17 +200,21 @@ with st.form("ebook_form"):
     )
 
     if submitted:
-        if len(idea) < 10:
-            st.error("Idea must be at least 10 characters")
-        elif len(idea) > 500:
-            st.error("Idea must not exceed 500 characters")
-        else:
-            intake = ProjectIntake(str(db_path))
-            project = intake.create_project(
+        try:
+            validated_input = ProjectInput(
                 idea=idea,
-                product_mode=product_mode,
                 chapter_count=chapter_count,
                 target_language=target_language,
+                product_mode=product_mode,
+                quality_level=quality_level,
+            )
+            
+            intake = ProjectIntake(str(db_path))
+            project = intake.create_project(
+                idea=validated_input.idea,
+                product_mode=validated_input.product_mode,
+                chapter_count=validated_input.chapter_count,
+                target_language=validated_input.target_language,
                 target_languages=target_languages,
             )
             st.session_state.quality_level = quality_level
@@ -263,6 +257,14 @@ with st.form("ebook_form"):
                 st.session_state.generation_error = friendly
                 st.error(f"❌ {friendly}")
                 st.info("You can retry by submitting the form again.")
+        
+        except ValidationError as e:
+            error_messages = []
+            for error in e.errors():
+                field = error['loc'][0]
+                msg = error['msg']
+                error_messages.append(f"**{field}**: {msg}")
+            st.error("❌ Validation Error:\n\n" + "\n\n".join(error_messages))
 
 # Handle resume from Progress page
 resume_id = st.session_state.get("generate_project_id")
