@@ -5,6 +5,9 @@ from typing import Optional
 from src.db.database import DatabaseManager
 from src.db.models import JobStatus, ProjectStatus
 
+# Whitelist of allowed fields for project updates to prevent SQL injection
+ALLOWED_UPDATE_FIELDS = {"title", "idea", "status", "chapter_count"}
+
 
 class ProjectRepository:
     def __init__(self, db_path: Path | str):
@@ -62,13 +65,23 @@ class ProjectRepository:
             conn.commit()
 
     def update_project(self, project_id: int, **kwargs) -> None:
+        invalid_fields = set(kwargs.keys()) - ALLOWED_UPDATE_FIELDS
+        if invalid_fields:
+            raise ValueError(
+                f"Invalid field(s) for update: {', '.join(sorted(invalid_fields))}. "
+                f"Allowed fields: {', '.join(sorted(ALLOWED_UPDATE_FIELDS))}"
+            )
+        
+        if not kwargs:
+            return
+        
         fields = ", ".join(f"{k} = ?" for k in kwargs.keys())
-        values = list(kwargs.values()) + [project_id]
+        values = list(kwargs.values()) + [datetime.now().isoformat(), project_id]
         with self.db.get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(
                 f"UPDATE projects SET {fields}, updated_at = ? WHERE id = ?",
-                values + [datetime.now().isoformat()],
+                values,
             )
             conn.commit()
 
