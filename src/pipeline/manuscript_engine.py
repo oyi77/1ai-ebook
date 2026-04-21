@@ -7,11 +7,15 @@ from typing import TYPE_CHECKING, Callable, Optional
 
 from src.ai_client import OmnirouteClient
 from src.config import get_config
+from src.logger import get_logger
 from src.pipeline.chapter_generator import ChapterGenerator
 from src.pipeline.model_tracker import ModelTracker
 from src.pipeline.progress_tracker import ProgressTracker
 from src.pipeline.style_context import StyleContext
 from src.pipeline.token_calibrator import TokenCalibrator
+from src.utils.error_handling import handle_gracefully
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from src.pipeline.pipeline_profile import PipelineProfile
@@ -109,25 +113,7 @@ class ManuscriptEngine:
 
             # Extract terminology for voice consistency (skip if too short or AI unavailable)
             if len(chapter_content.split()) > 100:
-                try:
-                    term_result = self.ai_client.generate_structured(
-                        prompt=(
-                            f"From this chapter excerpt, identify 1-2 domain-specific terms or metaphors "
-                            f"that should be used consistently throughout the ebook.\n\n"
-                            f"{chapter_content[:800]}\n\n"
-                            "Return JSON: {\"terms\": [{\"term\": \"string\", \"definition\": \"1 sentence\"}]}"
-                        ),
-                        system_prompt="You are an editor tracking terminology for consistency. Be concise.",
-                        response_schema={"terms": list},
-                        max_tokens=200,
-                        temperature=0.3,
-                    )
-                    if isinstance(term_result, dict):
-                        for t in term_result.get("terms", []):
-                            if isinstance(t, dict) and t.get("term"):
-                                style_ctx.established_terminology[t["term"]] = t.get("definition", "")
-                except Exception:
-                    pass  # term extraction is best-effort, never block chapter generation
+                self._extract_terminology(chapter_content, style_ctx)
 
             chapter_file = chapters_dir / f"{i}.md"
             with open(chapter_file, "w") as f:
@@ -354,3 +340,27 @@ class ManuscriptEngine:
         chapter_path.write_text(content, encoding="utf-8")
         log.info("chapter_regenerated", chapter_idx=chapter_idx, words=len(content.split()))
         return content
+
+    @handle_gracefully(default_return=None, log_level="info")
+    def _extract_terminology(self, chapter_content: str, style_ctx) -> None:
+        """Extract domain-specific terminology from chapter for consistency tracking.
+        
+        This is a best-effort operation that never blocks chapter generation.
+        Failures are logged but not raised.
+        """
+        term_result = self.ai_client.generate_structured(
+            prompt=(
+                f"From this chapter excerpt, identify 1-2 domain-specific terms or metaphors "
+                f"that should be used consistently throughout the ebook.\n\n"
+                f"{chapter_content[:800]}\n\n"
+                "Return JSON: {\"terms\": [{\"term\": \"string\", \"definition\": \"1 sentence\"}]}"
+            ),
+            system_prompt="You are an editor tracking terminology for consistency. Be concise.",
+            response_schema={"terms": list},
+            max_tokens=200,
+            temperature=0.3,
+        )
+        if isinstance(term_result, dict):
+            for t in term_result.get("terms", []):
+                if isinstance(t, dict) and t.get("term"):
+                    style_ctx.established_terminology[t["term"]] = t.get("definition", "")

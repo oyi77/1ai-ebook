@@ -3,6 +3,7 @@ from __future__ import annotations
 import datetime
 from pathlib import Path
 from src.logger import get_logger
+from src.utils.error_handling import handle_gracefully
 
 logger = get_logger(__name__)
 
@@ -97,31 +98,35 @@ class BookStructureGenerator:
     def _dedication(self, project: dict) -> str:
         if not self.ai_client:
             return "*For every reader who dares to keep learning.*"
-        try:
-            prompt = (
-                f"Write a short, heartfelt book dedication (1-2 sentences) for an ebook titled "
-                f"'{project.get('title', 'this book')}'. "
-                f"Be sincere, warm, and universal. No quotes, no explanations — just the dedication text."
-            )
-            text = self.ai_client.generate_text(prompt, max_tokens=80)
-            return f"*{text.strip()}*"
-        except Exception:
-            return "*For every reader who dares to keep learning.*"
+        return self._generate_dedication(project) or "*For every reader who dares to keep learning.*"
+
+    @handle_gracefully(default_return=None, log_level="info")
+    def _generate_dedication(self, project: dict) -> str | None:
+        """Generate a heartfelt book dedication using AI."""
+        prompt = (
+            f"Write a short, heartfelt book dedication (1-2 sentences) for an ebook titled "
+            f"'{project.get('title', 'this book')}'. "
+            f"Be sincere, warm, and universal. No quotes, no explanations — just the dedication text."
+        )
+        text = self.ai_client.generate_text(prompt, max_tokens=80)
+        return f"*{text.strip()}*"
 
     def _preface(self, project: dict) -> str:
         if not self.ai_client:
             return "# Preface\n\nThis book was written to provide practical, actionable guidance."
-        try:
-            prompt = (
-                f"Write a preface (200-250 words) for an ebook titled '{project.get('title', 'this book')}'. "
-                f"Write in first person as the author. Explain why you wrote this book, who it is for, "
-                f"and what the reader will gain. Be warm, direct, and authentic. "
-                f"Start with 'I wrote this book because...' or similar personal opening."
-            )
-            text = self.ai_client.generate_text(prompt, max_tokens=350)
-            return f"# Preface\n\n{text.strip()}"
-        except Exception:
-            return "# Preface\n\nThis book was written to provide practical, actionable guidance."
+        return self._generate_preface(project) or "# Preface\n\nThis book was written to provide practical, actionable guidance."
+
+    @handle_gracefully(default_return=None, log_level="info")
+    def _generate_preface(self, project: dict) -> str | None:
+        """Generate a preface for the ebook using AI."""
+        prompt = (
+            f"Write a preface (200-250 words) for an ebook titled '{project.get('title', 'this book')}'. "
+            f"Write in first person as the author. Explain why you wrote this book, who it is for, "
+            f"and what the reader will gain. Be warm, direct, and authentic. "
+            f"Start with 'I wrote this book because...' or similar personal opening."
+        )
+        text = self.ai_client.generate_text(prompt, max_tokens=350)
+        return f"# Preface\n\n{text.strip()}"
 
     def _glossary(self, terminology: dict) -> str:
         if not terminology:
@@ -134,18 +139,20 @@ class BookStructureGenerator:
     def _about_author(self, project: dict) -> str:
         if not self.ai_client:
             return "# About the Author\n\nThe author is an expert in their field."
-        try:
-            prompt = (
-                f"Write a short 'About the Author' bio (100-150 words) for an ebook titled "
-                f"'{project.get('title', 'this book')}'. "
-                f"Write in third person. Make the author sound credible and approachable. "
-                f"Mention their expertise in the subject area, their passion for the topic, "
-                f"and their goal of helping readers. Do not use a real person's name — use 'the author'."
-            )
-            text = self.ai_client.generate_text(prompt, max_tokens=200)
-            return f"# About the Author\n\n{text.strip()}"
-        except Exception:
-            return "# About the Author\n\nThe author is a passionate expert dedicated to helping readers achieve their goals."
+        return self._generate_about_author(project) or "# About the Author\n\nThe author is a passionate expert dedicated to helping readers achieve their goals."
+
+    @handle_gracefully(default_return=None, log_level="info")
+    def _generate_about_author(self, project: dict) -> str | None:
+        """Generate an 'About the Author' bio using AI."""
+        prompt = (
+            f"Write a short 'About the Author' bio (100-150 words) for an ebook titled "
+            f"'{project.get('title', 'this book')}'. "
+            f"Write in third person. Make the author sound credible and approachable. "
+            f"Mention their expertise in the subject area, their passion for the topic, "
+            f"and their goal of helping readers. Do not use a real person's name — use 'the author'."
+        )
+        text = self.ai_client.generate_text(prompt, max_tokens=200)
+        return f"# About the Author\n\n{text.strip()}"
 
     # ── helpers ──────────────────────────────────────────────────────────────
 
