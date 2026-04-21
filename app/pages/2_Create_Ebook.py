@@ -30,8 +30,10 @@ def get_available_models():
         if resp.status_code == 200:
             data = resp.json()
             return [m["id"] for m in data.get("data", [])]
-    except Exception:
-        pass
+    except Exception as e:
+        from src.logger import get_logger
+        logger = get_logger(__name__)
+        logger.warning("Failed to fetch AI models from OmniRoute", page="create_ebook", operation="get_models", error=str(e))
     return ["auto/best-chat", "auto/best-fast", "auto/best-reasoning"]
 
 

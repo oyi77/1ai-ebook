@@ -124,22 +124,26 @@ def _bk_hub_panel(ig, uid):
             if not mf.exists():
                 st.error("Manuscript not found.")
             else:
-                title = project.get("idea", "Ebook")
-                try:
-                    title = json.loads((project_dir / "outline.json").read_text()).get("best_title", title)
-                except Exception:
-                    pass
+            title = project.get("idea", "Ebook")
+            try:
+                title = json.loads((project_dir / "outline.json").read_text()).get("best_title", title)
+            except Exception as e:
+                from src.logger import get_logger
+                logger = get_logger(__name__)
+                logger.warning("Failed to load outline title", page="integrations", operation="kb_push", error=str(e))
                 c, resp = _post(f"{base}/paperclip/query", {"query": f"Store: {title}", "context": mf.read_text()[:8000]}, headers=headers)
                 st.success("Pushed!") if (c and c < 300) else st.error(f"HTTP {c}: {str(resp)[:150]}")
 
     with col_wa:
         wa_num = st.text_input("WhatsApp number", value="6282247006969", key=f"bk_wa_{uid}")
         if st.button("Send WA Alert", key=f"bk_alert_{uid}"):
-            title = project.get("idea", "Ebook")[:60]
-            try:
-                title = json.loads((project_dir / "outline.json").read_text()).get("best_title", title)
-            except Exception:
-                pass
+        title = project.get("idea", "Ebook")[:60]
+        try:
+            title = json.loads((project_dir / "outline.json").read_text()).get("best_title", title)
+        except Exception as e:
+            from src.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning("Failed to load outline title", page="integrations", operation="wa_alert", error=str(e))
             c, resp = _post(f"{base}/alert", {"channels": ["whatsapp"], "message": f"✅ Ebook ready: *{title}*\nProject #{project['id']} generated.", "number": wa_num}, headers=headers)
             st.success("Alert sent!") if (c and c < 300) else st.error(f"HTTP {c}: {str(resp)[:150]}")
 
@@ -171,14 +175,18 @@ def _adforge_panel(ig, uid):
             ol = json.loads((project_dir / "outline.json").read_text())
             title = ol.get("best_title", title)
             subtitle = ol.get("best_subtitle", "")
-        except Exception:
-            pass
+        except Exception as e:
+            from src.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning("Failed to load outline data", page="integrations", operation="adforge_push", error=str(e))
         try:
             st_ = json.loads((project_dir / "strategy.json").read_text())
             hook = st_.get("hook", "")
             tone = st_.get("tone", tone)
-        except Exception:
-            pass
+        except Exception as e:
+            from src.logger import get_logger
+            logger = get_logger(__name__)
+            logger.warning("Failed to load strategy data", page="integrations", operation="adforge_push", error=str(e))
 
         payload = {"title": title, "subtitle": subtitle, "hook": hook, "tone": tone,
                    "product_mode": project.get("product_mode", "lead_magnet"),
