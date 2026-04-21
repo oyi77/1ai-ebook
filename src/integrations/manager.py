@@ -154,26 +154,105 @@ class IntegrationManager:
             "X-Signature-SHA256": f"sha256={signature}",
         }
 
+        max_retries = 3
         last_error = None
         http_status = None
-        for attempt in range(2):  # 2 attempts within the call
+        error_type = None
+        
+        for attempt in range(max_retries):
             try:
                 response = httpx.post(url, content=body, headers=headers, timeout=10.0)
                 response.raise_for_status()
                 self._log_attempt(integration_id, event, "success", response.status_code, None)
                 self._reset_circuit(integration_id)
-                logger.info("Webhook delivered", integration_id=integration_id, event=event, status=response.status_code)
-                return
+                logger.info(
+                    "Webhook delivered",
+                    integration_id=integration_id,
+                    event=event,
+                    webhook_url=url,
+                    status=response.status_code,
+                    retry_attempt=attempt + 1
+                )
+                return {"success": True, "status_code": response.status_code, "retries": attempt}
+            except httpx.TimeoutException as e:
+                error_type = "timeout"
+                last_error = f"Request timeout after 10s: {str(e)}"
+                http_status = None
+                logger.warning(
+                    "Webhook timeout",
+                    integration_id=integration_id,
+                    event=event,
+                    webhook_url=url,
+                    error_type=error_type,
+                    retry_attempt=attempt + 1,
+                    max_retries=max_retries
+                )
+            except httpx.HTTPStatusError as e:
+                error_type = "http_error"
+                http_status = e.response.status_code
+                last_error = f"HTTP {http_status}: {str(e)}"
+                logger.warning(
+                    "Webhook HTTP error",
+                    integration_id=integration_id,
+                    event=event,
+                    webhook_url=url,
+                    error_type=error_type,
+                    http_status=http_status,
+                    retry_attempt=attempt + 1,
+                    max_retries=max_retries
+                )
+            except (httpx.ConnectError, httpx.NetworkError) as e:
+                error_type = "network_error"
+                last_error = f"Network error: {str(e)}"
+                http_status = None
+                logger.warning(
+                    "Webhook network error",
+                    integration_id=integration_id,
+                    event=event,
+                    webhook_url=url,
+                    error_type=error_type,
+                    retry_attempt=attempt + 1,
+                    max_retries=max_retries
+                )
             except Exception as e:
-                last_error = str(e)
+                error_type = "unknown_error"
+                last_error = f"Unexpected error: {str(e)}"
                 http_status = getattr(getattr(e, "response", None), "status_code", None)
-                if attempt < 1:
-                    time.sleep(2 ** attempt)
+                logger.error(
+                    "Webhook unexpected error",
+                    integration_id=integration_id,
+                    event=event,
+                    webhook_url=url,
+                    error_type=error_type,
+                    error=str(e),
+                    retry_attempt=attempt + 1,
+                    max_retries=max_retries
+                )
+            
+            # Exponential backoff: 1s, 2s, 4s
+            if attempt < max_retries - 1:
+                delay = 2 ** attempt
+                logger.info(
+                    "Retrying webhook after delay",
+                    integration_id=integration_id,
+                    delay_seconds=delay,
+                    next_attempt=attempt + 2
+                )
+                time.sleep(delay)
 
         # All attempts failed
         self._log_attempt(integration_id, event, "failed", http_status, last_error)
         self._increment_failures(integration_id)
-        logger.warning("Webhook delivery failed", integration_id=integration_id, event=event, error=last_error)
+        logger.error(
+            "Webhook delivery failed after all retries",
+            integration_id=integration_id,
+            event=event,
+            webhook_url=url,
+            error_type=error_type,
+            error=last_error,
+            retries=max_retries
+        )
+        return {"success": False, "error": last_error, "retries": max_retries, "error_type": error_type}
 
     def _get_integration(self, integration_id: str) -> dict | None:
         """Get integration by id from loaded integrations."""
@@ -202,8 +281,8 @@ class IntegrationManager:
                         return True
                     # Cooldown expired — auto-reset
                     self._reset_circuit(integration_id)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to check circuit breaker state", integration_id=integration_id, error=str(e))
         return False
 
     def _increment_failures(self, integration_id: str) -> None:
@@ -237,8 +316,8 @@ class IntegrationManager:
                     "UPDATE integration_logs SET circuit_open=0, circuit_open_until=NULL, consecutive_failures=0 WHERE integration_id=?",
                     (integration_id,)
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to reset circuit breaker", integration_id=integration_id, error=str(e))
 
     def _log_attempt(self, integration_id: str, event: str, status: str, http_status, error: str | None) -> None:
         """Write attempt to integration_logs."""
