@@ -15,11 +15,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from src.db.database import DatabaseManager
 from src.db.repository import ProjectRepository
 from src.db.schema import create_tables
+from src.models.validation import ProjectInput
 from src.pipeline.error_classifier import ErrorClassifier
 
 try:
@@ -163,12 +164,8 @@ def verify_api_key(x_api_key: str = Header(...)) -> str:
 # Request / response models
 # ---------------------------------------------------------------------------
 
-class CreateProjectRequest(BaseModel):
-    title: str
-    idea: str
-    product_mode: str = "lead_magnet"
-    target_language: str = "en"
-    chapter_count: int = 5
+class CreateProjectRequest(ProjectInput):
+    pass
 
 
 # ---------------------------------------------------------------------------
