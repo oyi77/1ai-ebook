@@ -18,7 +18,33 @@ class PermanentAPIError(Exception):
     pass
 
 
-class OmnirouteClient:
+from typing import Protocol, Any, Dict, List, Optional, Union
+
+class AIClient(Protocol):
+    def generate_text(
+        self,
+        prompt: str,
+        system_prompt: str = "You are a helpful assistant.",
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        **kwargs: Any
+    ) -> str:
+        ...
+
+    def generate_structured(
+        self,
+        prompt: str,
+        system_prompt: str = "You are a helpful assistant.",
+        response_schema: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        temperature: float = 0.7,
+        **kwargs: Any
+    ) -> Union[Dict[str, Any], List[Any]]:
+        ...
+
+class OmnirouteClient(AIClient):
     def _parse_json_response(self, content: str | None) -> dict[str, Any]:
         if content is None:
             raise ValueError(
@@ -117,7 +143,7 @@ class OmnirouteClient:
                     "model": model,
                     "attempt": attempt + 1,
                     "max_retries": self.max_retries,
-                    "provider": self.provider,
+                    "provider": getattr(self, "provider", "unknown"),
                 }
                 
                 if any(
@@ -206,7 +232,7 @@ class OmnirouteClient:
                     "model": model,
                     "attempt": attempt + 1,
                     "max_retries": self.max_retries,
-                    "provider": self.provider,
+                    "provider": getattr(self, "provider", "unknown"),
                 }
                 
                 if attempt == self.max_retries - 1:
@@ -236,7 +262,7 @@ class OmnirouteClient:
                     "model": model,
                     "attempt": attempt + 1,
                     "max_retries": self.max_retries,
-                    "provider": self.provider,
+                    "provider": getattr(self, "provider", "unknown"),
                 }
                 
                 if any(
@@ -301,7 +327,7 @@ class OmnirouteClient:
                 "operation": "generate_image",
                 "model": model,
                 "size": size,
-                "provider": self.provider,
+                "provider": getattr(self, "provider", "unknown"),
             }
             
             if (

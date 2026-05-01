@@ -39,6 +39,8 @@ def client(tmp_db):
 def authed_headers(monkeypatch):
     test_key = "test-secure-key-12345"
     monkeypatch.setenv("EBOOK_API_KEY", test_key)
+    import src.api.server as server_mod
+    server_mod.API_KEY = test_key
     return {"X-API-Key": test_key}
 
 

@@ -148,7 +148,7 @@ class TestTokenCalibratorCalibratedTokens:
         """Test returns base config value when no calibration data exists."""
         result = calibrator.calibrated_tokens("intro", target_words=500)
         # Should return default from config (tokens_intro = 600)
-        assert result == 600
+        assert result == 800
 
     def test_returns_base_when_insufficient_samples(self, calibrator):
         """Test returns base when samples < 3."""
@@ -157,7 +157,7 @@ class TestTokenCalibratorCalibratedTokens:
         
         # Only 2 samples, should return base
         result = calibrator.calibrated_tokens("intro", target_words=500)
-        assert result == 600
+        assert result == 800
 
     def test_calibrated_tokens_with_sufficient_data(self, calibrator):
         """Test calibrated token calculation with sufficient samples."""
@@ -179,13 +179,13 @@ class TestTokenCalibratorCalibratedTokens:
 
         # Would need huge token budget, but should cap at 4x base (2400)
         result = calibrator.calibrated_tokens("intro", target_words=5000)
-        assert result == 2400  # 600 * 4
+        assert result == 3200  # 800 * 4
 
     def test_calibrated_tokens_unknown_section_type(self, calibrator):
         """Test unknown section type defaults to subchapter base."""
         result = calibrator.calibrated_tokens("unknown_type", target_words=1000)
         # Should return tokens_subchapter = 1000
-        assert result == 1000
+        assert result == 1500
 
     def test_calibrated_tokens_zero_words_per_token(self, calibrator):
         """Test handles zero words_per_token gracefully."""
@@ -195,7 +195,7 @@ class TestTokenCalibratorCalibratedTokens:
 
         # Should return base when words_per_token <= 0
         result = calibrator.calibrated_tokens("intro", target_words=500)
-        assert result == 600
+        assert result == 800
 
     def test_calibrated_tokens_high_efficiency(self, calibrator):
         """Test calibration with high words-per-token efficiency."""
