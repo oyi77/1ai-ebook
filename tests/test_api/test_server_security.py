@@ -17,6 +17,7 @@ def tmp_db(tmp_path, monkeypatch):
     
     import src.api.server as server_mod
     monkeypatch.setattr(server_mod, "DB_PATH", db_file)
+    server_mod.API_KEY = "dev-key-change-me"
     monkeypatch.setattr(server_mod, "PROJECTS_DIR", projects_dir)
     server_mod._generation_progress.clear()
     return db_file, projects_dir

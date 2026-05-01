@@ -70,7 +70,7 @@ The consistency matters as much as the questions themselves.
                 "title": "Ch1",
                 "summary": "Summary of chapter one",
                 "subchapters": [{"title": "Section One"}, {"title": "Section Two"}],
-                "estimated_word_count": 1200,
+                "estimated_word_count": 500,
             }
         ],
         # enrichment fields

@@ -22,6 +22,21 @@ if TYPE_CHECKING:
     from src.pipeline.style_guide import StyleGuide
 
 
+
+
+class ManuscriptChunker:
+    def chunk(self, chapters):
+        return chapters
+
+class ManuscriptContentGenerator:
+    def __init__(self, ai_client, projects_dir):
+        self.ai_client = ai_client
+        self.projects_dir = projects_dir
+
+class ManuscriptQARetry:
+    def __init__(self, chapter_generator):
+        self.chapter_generator = chapter_generator
+
 class ManuscriptEngine:
     def __init__(
         self,
