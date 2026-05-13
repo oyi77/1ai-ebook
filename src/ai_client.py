@@ -9,6 +9,14 @@ from openai import OpenAI
 
 from src.logger import get_logger
 
+try:
+    from oneai_ai_pipeline import AIPipeline, AIPipelineConfig
+    _SHARED_AI_AVAILABLE = True
+except ImportError:
+    AIPipeline = None
+    AIPipelineConfig = None
+    _SHARED_AI_AVAILABLE = False
+
 logger = get_logger(__name__)
 
 
@@ -69,6 +77,14 @@ class OmnirouteClient(AIClient):
         max_retries: int = 3,
         timeout: int = 300,
     ):
+        # Try shared AIPipeline first if available
+        self._pipeline = None
+        if _SHARED_AI_AVAILABLE and AIPipeline is not None:
+            try:
+                self._pipeline = AIPipeline.from_env()
+            except Exception:
+                self._pipeline = None
+
         # Determine provider from explicit arg, env var, or default
         self.provider = provider or os.getenv("EBOOK_AI_PROVIDER", "omniroute")
 
@@ -111,7 +127,21 @@ class OmnirouteClient(AIClient):
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> str:
-        # Select model based on provider if not explicitly provided
+        if self._pipeline is not None:
+            try:
+                from oneai_ai_pipeline import GenerateOptions
+                opts = GenerateOptions(
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                )
+                result = self._pipeline.generate_sync(prompt, opts)
+                if result and result.content:
+                    return result.content
+            except Exception:
+                pass
+
         if model is None:
             from src.config import get_config
 
@@ -192,7 +222,22 @@ class OmnirouteClient(AIClient):
         max_tokens: int = 4096,
         temperature: float = 0.7,
     ) -> dict[str, Any]:
-        # Select model based on provider if not explicitly provided
+        if self._pipeline is not None:
+            try:
+                from oneai_ai_pipeline import GenerateOptions
+                opts = GenerateOptions(
+                    model=model,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    system_prompt=system_prompt,
+                    json_mode=True,
+                )
+                text = self._pipeline.generate_sync(prompt, opts)
+                if text and text.content:
+                    return self._parse_json_response(text.content)
+            except Exception:
+                pass
+
         if model is None:
             from src.config import get_config
 
