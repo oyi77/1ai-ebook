@@ -1,3 +1,4 @@
+<!-- Parent: ../AGENTS.md -->
 <!-- Generated: 2026-04-03 | Updated: 2026-04-21 -->
 
 # ebook-generator
